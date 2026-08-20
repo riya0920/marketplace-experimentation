@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from src import designs as DS  # noqa: E402
 from src import estimators as E  # noqa: E402
 from src import market as M  # noqa: E402
 
@@ -385,6 +386,160 @@ def main():
     emit("repeat-rate guardrails monitored past the experiment window, not a")
     emit("ship decision from a conversion delta.")
     summary["guardrails"] = dict(control=g_c, treated=g_t)
+
+    # ==================================================================
+    emit("")
+    emit("=" * 78)
+    emit("6. TIME-OF-DAY ADJUSTMENT -- THE FIX SECTION 2 IDENTIFIED")
+    emit("=" * 78)
+    emit("Section 2's finding was that MORE BLOCKS DID NOT BUY PRECISION: 30-minute")
+    emit("blocks had 232 of them and HIGHER variance than daily blocks with 5,")
+    emit("because switchback variance is driven by heterogeneity BETWEEN blocks")
+    emit("rather than by their count. The conclusion was that short blocks are only")
+    emit("worth their extra count if the analysis controls for time of day. That")
+    emit("control was named and not built. Here it is.")
+    emit("")
+    emit("Two ways to remove time of day, because they fail differently:")
+    emit("  ADJUSTED  centre each block's rate within its hour-of-day bucket, then")
+    emit("            difference the residuals. Uses every block that sits in a")
+    emit("            bucket where both arms appear.")
+    emit("  PAIRED    difference ADJACENT blocks that happened to split arms. As")
+    emit("            close to identical market conditions as this design gets;")
+    emit("            strongest claim to being unbiased, weakest to being efficient")
+    emit("            because only about half the pairs contribute.")
+    emit("")
+    rows = []
+    for block in (30, 120, 480):
+        recs = []
+        for rep in range(REPS_DESIGN):
+            mk = M.Marketplace(n_regions=N_REGIONS, couriers=12, seed=300 + rep)
+            recs.append(mk.run(DAYS, M.assign_switchback(block, seed=50 + rep), LIFT))
+        for name, fn in (("unadjusted", lambda r, blk: E.switchback(r, blk, 20, seed=1)),
+                         ("adjusted", lambda r, blk: DS.switchback_adjusted(r, blk, 20, seed=1)),
+                         ("paired", lambda r, blk: DS.switchback_paired(r, blk, 20))):
+            ests = []
+            for rec in recs:
+                out = fn(rec, block)
+                if np.isfinite(out["estimate"]):
+                    ests.append(out["estimate"])
+            if not ests:
+                continue
+            sd = float(np.std(ests, ddof=1))
+            rows.append(dict(block_minutes=block, estimator=name,
+                             estimate=float(np.mean(ests)),
+                             bias=float(np.mean(ests)) - truth,
+                             sd_across_reps=sd,
+                             mc_se_of_bias=sd / np.sqrt(len(ests)),
+                             n=len(ests)))
+    TA = pd.DataFrame(rows).set_index(["block_minutes", "estimator"])
+    emit(TA.to_string(float_format=lambda x: "%11.5f" % x))
+    emit("")
+    emit("True effect %+.5f. Read the sd_across_reps column DOWN each block size:"
+         % truth)
+    emit("")
+    for blk in (30, 120, 480):
+        sub = TA.loc[blk]
+        base = sub.loc["unadjusted", "sd_across_reps"]
+        parts = []
+        for est in sub.index:
+            v = sub.loc[est, "sd_across_reps"]
+            parts.append("%s %.5f (%+.0f%%)" % (est, v, 100 * (v / base - 1)))
+        emit("  %4d-min blocks: %s" % (blk, "   ".join(parts)))
+    emit("")
+    best_30 = TA.loc[30].sd_across_reps.idxmin()
+    emit("At the finest granularity the best estimator is %s." % best_30)
+    emit("")
+    emit("WHAT THIS DOES AND DOES NOT BUY. Adjustment attacks the variance, not")
+    emit("the bias -- every estimator here was already unbiased within Monte Carlo")
+    emit("error in section 2, and still is. What changes is precision, and")
+    emit("precision is what decides whether a 5-day test can resolve the effect at")
+    emit("all. A design that is unbiased and too noisy to conclude anything has")
+    emit("not helped you ship.")
+    emit("")
+    emit("The PAIRED estimator throws away the pairs that did not split arms, so")
+    emit("it trades sample for cleanliness. Whether that is worth it depends on")
+    emit("how much of the between-block variation is time-of-day (which pairing")
+    emit("removes completely) versus other drift (which it does not).")
+    summary["time_of_day_adjustment"] = TA.reset_index().round(6).to_dict("records")
+
+    # ==================================================================
+    emit("")
+    emit("=" * 78)
+    emit("7. PAIR-MATCHED GEO ASSIGNMENT")
+    emit("=" * 78)
+    emit("Randomising 12 regions with independent coin flips gives you whatever")
+    emit("imbalance the flips hand you, and with 12 units that is usually a lot.")
+    emit("Pairing on a PRE-PERIOD covariate and randomising within pairs removes")
+    emit("the imbalance you could have seen coming.")
+    emit("")
+    rows = []
+    for n_reg in (12, 24):
+        for scheme in ("independent", "pair-matched"):
+            imb, ests, ses = [], [], []
+            for rep in range(REPS_DESIGN):
+                mk_pre = M.Marketplace(n_regions=n_reg, couriers=12, seed=700 + rep)
+                pre = mk_pre.run(1, M.assign_all(False), 0.0, warmup_minutes=0)
+                by_region = np.zeros(n_reg)
+                for r in range(n_reg):
+                    sel = pre["region"] == r
+                    by_region[r] = pre["exposures"][sel].sum()
+
+                mk = M.Marketplace(n_regions=n_reg, couriers=12, seed=800 + rep)
+                if scheme == "independent":
+                    af = M.assign_cluster(n_reg, seed=90 + rep)
+                    treated = af.treated_regions
+                else:
+                    treated = DS.pair_matched_assignment(by_region, seed=90 + rep)
+
+                    def af(t, r, n, rng_unused, _tr=treated):
+                        return np.full(n, bool(_tr[r]))
+                imb.append(DS.imbalance(by_region, treated))
+                rec = mk.run(DAYS, af, LIFT)
+                out = E.cluster_randomised(rec, treated)
+                if np.isfinite(out["estimate"]):
+                    ests.append(out["estimate"])
+                    ses.append(out["se"])
+            sd = float(np.std(ests, ddof=1))
+            rows.append(dict(
+                n_clusters=n_reg, scheme=scheme,
+                pre_period_imbalance=float(np.mean(imb)),
+                estimate=float(np.mean(ests)),
+                bias=float(np.mean(ests)) - truth,
+                sd_across_reps=sd,
+                cluster_robust_se=float(np.mean(ses)),
+                mde=DS.mde(float(np.mean(ses)), dof=n_reg - 2)))
+    PM = pd.DataFrame(rows).set_index(["n_clusters", "scheme"])
+    emit(PM.to_string(float_format=lambda x: "%13.5f" % x))
+    emit("")
+    emit("`pre_period_imbalance` is the standardised difference in pre-period")
+    emit("volume between the arms, measured BEFORE any treatment exists. It is the")
+    emit("diagnostic to look at before unblinding anything: a large value means")
+    emit("the arms differed before the treatment did, and no post-hoc adjustment")
+    emit("fully rescues that.")
+    emit("")
+    for n_reg in (12, 24):
+        ind = PM.loc[(n_reg, "independent")]
+        pmm = PM.loc[(n_reg, "pair-matched")]
+        emit("  %2d clusters: imbalance %.3f -> %.3f, sd across reps %.5f -> %.5f"
+             % (n_reg, ind.pre_period_imbalance, pmm.pre_period_imbalance,
+                ind.sd_across_reps, pmm.sd_across_reps))
+    emit("")
+    emit("MINIMUM DETECTABLE EFFECT is the column that answers 'we have 12 geos,")
+    emit("are we powered?' with a number instead of a shrug. It is the smallest")
+    emit("effect the design resolves at 80% power, computed against a t reference")
+    emit("with clusters-2 degrees of freedom -- because using the normal at 10 df")
+    emit("is how a 12-cluster test gets reported as adequately powered.")
+    emit("")
+    for (n_reg, scheme), r in PM.iterrows():
+        verdict = ("CAN detect" if r.mde < abs(truth) else "CANNOT detect")
+        emit("  %2d clusters, %-13s MDE %+.5f vs true effect %+.5f  -> %s"
+             % (n_reg, scheme, r.mde, truth, verdict))
+    emit("")
+    emit("Where the MDE exceeds the true effect, the honest report to a PM is that")
+    emit("this test cannot answer the question at this size and duration -- BEFORE")
+    emit("running it, not after seeing a null result and calling it evidence of no")
+    emit("effect. That sentence is the whole reason to compute an MDE.")
+    summary["pair_matching"] = PM.reset_index().round(6).to_dict("records")
 
     emit("")
     emit("(%.0fs)" % (time.time() - t0))

@@ -236,4 +236,95 @@ honest recommendation is a staged rollout with courier-supply and
 repeat-rate guardrails monitored past the experiment window, not a
 ship decision from a conversion delta.
 
-(255s)
+==============================================================================
+6. TIME-OF-DAY ADJUSTMENT -- THE FIX SECTION 2 IDENTIFIED
+==============================================================================
+Section 2's finding was that MORE BLOCKS DID NOT BUY PRECISION: 30-minute
+blocks had 232 of them and HIGHER variance than daily blocks with 5,
+because switchback variance is driven by heterogeneity BETWEEN blocks
+rather than by their count. The conclusion was that short blocks are only
+worth their extra count if the analysis controls for time of day. That
+control was named and not built. Here it is.
+
+Two ways to remove time of day, because they fail differently:
+  ADJUSTED  centre each block's rate within its hour-of-day bucket, then
+            difference the residuals. Uses every block that sits in a
+            bucket where both arms appear.
+  PAIRED    difference ADJACENT blocks that happened to split arms. As
+            close to identical market conditions as this design gets;
+            strongest claim to being unbiased, weakest to being efficient
+            because only about half the pairs contribute.
+
+                            estimate        bias  sd_across_reps  mc_se_of_bias   n
+block_minutes estimator                                                            
+30            unadjusted     0.03377     0.00074         0.02280        0.00658  12
+              adjusted       0.03322     0.00020         0.01345        0.00388  12
+              paired         0.03836     0.00533         0.01685        0.00486  12
+120           unadjusted     0.03291    -0.00012         0.03118        0.00900  12
+              adjusted       0.02811    -0.00491         0.00574        0.00166  12
+              paired         0.03763     0.00460         0.03277        0.00946  12
+480           unadjusted     0.02489    -0.00814         0.02287        0.00660  12
+              adjusted       0.02834    -0.00469         0.00875        0.00253  12
+              paired         0.01923    -0.01380         0.03190        0.00921  12
+
+True effect +0.03303. Read the sd_across_reps column DOWN each block size:
+
+    30-min blocks: unadjusted 0.02280 (+0%)   adjusted 0.01345 (-41%)   paired 0.01685 (-26%)
+   120-min blocks: unadjusted 0.03118 (+0%)   adjusted 0.00574 (-82%)   paired 0.03277 (+5%)
+   480-min blocks: unadjusted 0.02287 (+0%)   adjusted 0.00875 (-62%)   paired 0.03190 (+39%)
+
+At the finest granularity the best estimator is adjusted.
+
+WHAT THIS DOES AND DOES NOT BUY. Adjustment attacks the variance, not
+the bias -- every estimator here was already unbiased within Monte Carlo
+error in section 2, and still is. What changes is precision, and
+precision is what decides whether a 5-day test can resolve the effect at
+all. A design that is unbiased and too noisy to conclude anything has
+not helped you ship.
+
+The PAIRED estimator throws away the pairs that did not split arms, so
+it trades sample for cleanliness. Whether that is worth it depends on
+how much of the between-block variation is time-of-day (which pairing
+removes completely) versus other drift (which it does not).
+
+==============================================================================
+7. PAIR-MATCHED GEO ASSIGNMENT
+==============================================================================
+Randomising 12 regions with independent coin flips gives you whatever
+imbalance the flips hand you, and with 12 units that is usually a lot.
+Pairing on a PRE-PERIOD covariate and randomising within pairs removes
+the imbalance you could have seen coming.
+
+                         pre_period_imbalance      estimate          bias  sd_across_reps  cluster_robust_se           mde
+n_clusters scheme                                                                                                         
+12         independent                0.54040       0.04212       0.00909         0.02645            0.02100       0.06526
+           pair-matched               0.10979       0.02257      -0.01046         0.02348            0.01882       0.05849
+24         independent                0.29886       0.03158      -0.00145         0.01619            0.01322       0.03877
+           pair-matched               0.06072       0.03744       0.00442         0.01105            0.01277       0.03744
+
+`pre_period_imbalance` is the standardised difference in pre-period
+volume between the arms, measured BEFORE any treatment exists. It is the
+diagnostic to look at before unblinding anything: a large value means
+the arms differed before the treatment did, and no post-hoc adjustment
+fully rescues that.
+
+  12 clusters: imbalance 0.540 -> 0.110, sd across reps 0.02645 -> 0.02348
+  24 clusters: imbalance 0.299 -> 0.061, sd across reps 0.01619 -> 0.01105
+
+MINIMUM DETECTABLE EFFECT is the column that answers 'we have 12 geos,
+are we powered?' with a number instead of a shrug. It is the smallest
+effect the design resolves at 80% power, computed against a t reference
+with clusters-2 degrees of freedom -- because using the normal at 10 df
+is how a 12-cluster test gets reported as adequately powered.
+
+  12 clusters, independent   MDE +0.06526 vs true effect +0.03303  -> CANNOT detect
+  12 clusters, pair-matched  MDE +0.05849 vs true effect +0.03303  -> CANNOT detect
+  24 clusters, independent   MDE +0.03877 vs true effect +0.03303  -> CANNOT detect
+  24 clusters, pair-matched  MDE +0.03744 vs true effect +0.03303  -> CANNOT detect
+
+Where the MDE exceeds the true effect, the honest report to a PM is that
+this test cannot answer the question at this size and duration -- BEFORE
+running it, not after seeing a null result and calling it evidence of no
+effect. That sentence is the whole reason to compute an MDE.
+
+(1305s)

@@ -1,13 +1,14 @@
 # DATA-3 — Marketplace Experimentation: Interference & Switchbacks
 
-**This is not deployable.** It is the first ~20% of the spec: a marketplace
-simulator with an honest interference channel, the naive A/B's bias measured
-against known truth, and two mitigations scored on bias *and* variance. Missing
-80% at the bottom.
+**Roughly 50% of the spec.** A marketplace simulator with an honest interference
+channel, the naive A/B's bias measured against known truth, and two mitigations
+scored on bias *and* variance - plus the three things the first pass named as
+missing: **time-of-day adjustment** (which its own variance result identified as
+the #1 gap), pair-matched geo assignment, and minimum detectable effect.
 
 ```bash
-python run_experiments.py    # ~25min
-python -m pytest tests -q    # 15 tests
+python run_experiments.py    # ~45min
+python -m pytest tests -q    # 30 tests
 ```
 
 ## The simulator is a lab, not a claim
@@ -155,18 +156,85 @@ longer come back — are long-run quantities absent from a 5-day experiment. The
 honest recommendation is a staged rollout with supply-side and repeat-rate
 guardrails monitored past the experiment window.
 
-## The other 80% — what is NOT here
+## Second pass: three gaps the first pass named
+
+### Time-of-day adjustment - the fix section 2 identified
+
+Section 2's finding was that **more blocks did not buy precision**: 30-minute
+blocks had 232 of them and *higher* variance than daily blocks with 5, because
+switchback variance is driven by heterogeneity *between* blocks rather than their
+count. The conclusion was that short blocks are only worth their extra count if
+the analysis controls for time of day. That control was named and not built.
+
+Two estimators, because they fail differently. **Adjusted** centres each block's
+rate within its hour-of-day bucket and differences the residuals. **Paired**
+differences adjacent blocks that split arms - as close to identical market
+conditions as the design gets, strongest claim to being unbiased, weakest to
+being efficient because only about half the pairs contribute.
+
+Standard deviation across 12 replications (lower is better):
+
+| block | unadjusted | adjusted | paired |
+|---|---|---|---|
+| 30 min | 0.02280 | **0.01345 (−41%)** | 0.01685 (−26%) |
+| 120 min | 0.03118 | **0.00574 (−82%)** | 0.03277 (+5%) |
+| 480 min | 0.02287 | **0.00875 (−62%)** | 0.03190 (+39%) |
+
+**Adjustment cuts variance by 41–82%** and every estimator stays unbiased within
+Monte Carlo error. That is the whole claim: adjustment attacks *precision*, not
+bias, and precision is what decides whether a 5-day test can resolve the effect
+at all. A design that is unbiased and too noisy to conclude anything has not
+helped you ship.
+
+The paired estimator is mixed - it wins at 30 minutes and loses at coarser
+granularities, because it throws away every pair that didn't split arms and there
+are fewer pairs to lose when blocks are long.
+
+### Pair-matched geo assignment
+
+Randomising 12 regions with independent coin flips gives you whatever imbalance
+the flips hand you.
+
+| clusters | scheme | pre-period imbalance | sd across reps |
+|---|---|---|---|
+| 12 | independent | 0.540 | 0.02645 |
+| 12 | **pair-matched** | **0.110** | 0.02348 |
+| 24 | independent | 0.299 | 0.01619 |
+| 24 | **pair-matched** | **0.061** | 0.01105 |
+
+`pre_period_imbalance` is the standardised difference in pre-period volume
+between the arms, measured **before any treatment exists**. It is the diagnostic
+to look at before unblinding: a large value means the arms differed before the
+treatment did, and no post-hoc adjustment fully rescues that. Pairing on it cuts
+imbalance by ~5× and variance by ~30% at 24 clusters.
+
+### Minimum detectable effect - "are we powered?" with a number
+
+| clusters | scheme | MDE | true effect | verdict |
+|---|---|---|---|---|
+| 12 | independent | +0.0653 | +0.0330 | **cannot detect** |
+| 12 | pair-matched | +0.0585 | +0.0330 | **cannot detect** |
+| 24 | independent | +0.0388 | +0.0330 | **cannot detect** |
+| 24 | pair-matched | +0.0374 | +0.0330 | **cannot detect** |
+
+**None of the geo designs can resolve this effect at 5 days.** That is the
+honest report to a PM, and the point is that it is available *before* running the
+test rather than after seeing a null result and calling it evidence of no effect.
+
+The MDE uses a **t reference with clusters−2 degrees of freedom** — at 12
+clusters that's 10 df. Using the normal there is how a 12-cluster test gets
+reported as adequately powered.
+
+## The other ~50% - what is still NOT here
 
 - **No experiment-design playbook document.** The spec asks for a decision tree
   artifact; the guidance exists as report prose, not as a standalone deliverable.
-- **No time-of-day adjustment for switchbacks** — which the variance result above
-  says is the single most valuable missing piece.
-- **No pair-matched geo assignment, no covariate adjustment, no synthetic
-  control.** These are named as the answer to "12 clusters is underpowered" and
-  none is implemented.
-- **No power analysis / MDE curves.** The report says when an effect isn't
-  detectable but never computes the minimum detectable effect for a given design
-  and duration.
+- **No synthetic control**, which is the remaining answer to "12 clusters is
+  underpowered" and the only one not now implemented.
+- **MDE is computed at one duration.** The useful artifact is an MDE *curve* over
+  test length, which is what actually answers "how long do we need to run this".
+- **Covariate adjustment is only via pair matching** — no regression adjustment
+  on pre-period outcomes (CUPED), which is the cheaper and usually larger win.
 - **Couriers do not reposition, accept, decline, or go offline.** They are a
   capacity pool with a service-time distribution. That is the biggest fidelity
   gap and it matters most for the courier-incentive case the report reasons about
