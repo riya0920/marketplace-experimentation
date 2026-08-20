@@ -98,8 +98,8 @@ drew the dinner rush.
 The practitioner consequence: **short blocks are only worth their extra count if
 the analysis controls for time-of-day** — paired adjacent blocks, or block-level
 covariate adjustment. Running fine-grained switchbacks and then taking a raw
-difference in means throws away the precision the design was chosen for. That
-adjustment is not implemented here; it's the first thing I'd add.
+difference in means throws away the precision the design was chosen for — which
+the second pass builds and measures below.
 
 Burn-in moves every row toward truth (30-min: +0.0029 → +0.0007; 120-min:
 +0.0018 → −0.0001) — the direction carryover predicts, consistent across
