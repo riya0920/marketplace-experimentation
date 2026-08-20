@@ -1,0 +1,239 @@
+==============================================================================
+0. SIMULATOR VALIDATION -- this is a LAB, not a claim about reality
+==============================================================================
+  eta_rises_with_utilisation         PASS
+  eta_is_convex_in_utilisation       PASS
+  conversion_falls_with_eta          PASS
+  demand_has_meal_peaks              PASS
+
+Nothing here is calibrated to a real company. The simulator earns its
+keep by making the TRUTH knowable, so estimators can be scored instead
+of argued about. Its stylised facts are checked above; its conclusions
+are about ESTIMATORS, which is what transfers -- not about DoorDash.
+
+==============================================================================
+1. ACT ONE -- THE NAIVE A/B TEST IS BIASED, AND THE BIAS GROWS
+==============================================================================
+True effect = conversion(everyone treated) - conversion(nobody treated).
+That is the estimand that matters, because it is what shipping does.
+
+            couriers  mean_utilisation      truth  naive_estimate       bias   bias_pct  reported_se
+market                                                                                              
+slack             26           0.25537    0.04697         0.04694   -0.00003   -0.05660      0.00764
+normal            17           0.35483    0.03942         0.04801    0.00859   21.80265      0.00774
+tight             12           0.43096    0.03303         0.04404    0.01101   33.35118      0.00776
+very_tight         9           0.50059    0.02683         0.03711    0.01028   38.30014      0.00770
+
+THE MONEY FIGURE IS THE bias_pct COLUMN AGAINST MARKET TIGHTNESS.
+  slack       utilisation  25.5%   truth +0.04697   naive +0.04694   OVERSTATED by  -0.1%
+  normal      utilisation  35.5%   truth +0.03942   naive +0.04801   OVERSTATED by  21.8%
+  tight       utilisation  43.1%   truth +0.03303   naive +0.04404   OVERSTATED by  33.4%
+  very_tight  utilisation  50.1%   truth +0.02683   naive +0.03711   OVERSTATED by  38.3%
+
+Mechanism, stated as a chain because that is how you explain it to a PM:
+  treatment raises conversion -> more orders -> more couriers busy ->
+  utilisation up -> quoted delivery time up -> conversion falls for
+  EVERYONE in the region, including control.
+
+So the control group is not a group of unaffected bystanders. It is a
+group the treatment actively made worse off, by taking the couriers it
+was competing for. Measuring (treated - control) therefore counts the
+treatment's benefit AND the damage it did to its own baseline. SUTVA --
+the assumption that one unit's treatment does not affect another unit's
+outcome -- is violated by construction, and in a marketplace it is
+ALWAYS violated; the only question is by how much.
+
+Note the reported_se column: it is small and it is CORRECT for how
+randomisation happened. The bias lives in the point estimate, not in the
+variance, so no amount of extra sample fixes it -- more users make the
+confidence interval tighter around the wrong number.
+
+==============================================================================
+2. ACT TWO -- SWITCHBACK, AND WHAT GRANULARITY COSTS
+==============================================================================
+Market: tight (12 couriers/region). True effect +0.03303
+
+                       n_blocks    estimate        bias    bias_pct  mc_se_of_bias  sd_across_reps  mean_bootstrap_se
+block_minutes burn_in                                                                                                
+30            0             232     0.03593     0.00290     8.79277        0.00656         0.02274            0.01519
+              20            232     0.03377     0.00074     2.23904        0.00658         0.02280            0.01921
+120           0              58     0.03485     0.00182     5.50987        0.00901         0.03123            0.02656
+              20             58     0.03291    -0.00012    -0.36641        0.00900         0.03118            0.02727
+480           0              15     0.02545    -0.00758   -22.94321        0.00636         0.02203            0.02727
+              20             15     0.02489    -0.00814   -24.64717        0.00660         0.02287            0.02781
+1440          0               5     0.03311     0.00008     0.25633        0.00262         0.00908            0.00635
+              20              5     0.03275    -0.00027    -0.82468        0.00256         0.00886            0.00629
+
+READ THE mc_se_of_bias COLUMN FIRST. It is the Monte Carlo standard
+error of the bias estimate itself -- how precisely 12 replications pin
+down each design's bias. A bias smaller than about twice its own MC SE
+is not distinguishable from zero here, and saying which rows clear that
+bar is the difference between a measurement and a decoration:
+  block   30 min, burn-in  0:  bias +0.00290 +/- 0.00656   not distinguishable from zero
+  block   30 min, burn-in 20:  bias +0.00074 +/- 0.00658   not distinguishable from zero
+  block  120 min, burn-in  0:  bias +0.00182 +/- 0.00901   not distinguishable from zero
+  block  120 min, burn-in 20:  bias -0.00012 +/- 0.00900   not distinguishable from zero
+  block  480 min, burn-in  0:  bias -0.00758 +/- 0.00636   not distinguishable from zero
+  block  480 min, burn-in 20:  bias -0.00814 +/- 0.00660   not distinguishable from zero
+  block 1440 min, burn-in  0:  bias +0.00008 +/- 0.00262   not distinguishable from zero
+  block 1440 min, burn-in 20:  bias -0.00027 +/- 0.00256   not distinguishable from zero
+
+THE HEADLINE, AND IT IS NOT THE ONE I EXPECTED TO WRITE: at this
+replication count NO switchback granularity shows a bias distinguishable
+from zero, including the 30-minute blocks whose carryover window is
+longer than the block itself. The naive A/B's bias, by contrast, is many
+times its own MC error. So the mitigation works, and the interesting
+question moves from BIAS to VARIANCE.
+
+THE VARIANCE TRADE, which is where the granularity decision actually is:
+    30-minute blocks: 232 blocks, sd across reps 0.02274
+   120-minute blocks:  58 blocks, sd across reps 0.03123
+   480-minute blocks:  15 blocks, sd across reps 0.02203
+  1440-minute blocks:   5 blocks, sd across reps 0.00908
+
+  Read that column and the naive intuition breaks. MORE BLOCKS DID NOT
+  BUY PRECISION -- the 1,440-minute design has the fewest blocks and the
+  LOWEST variance, and the 120-minute design has four times as many
+  blocks and the highest.
+
+  The reason is that switchback variance is driven by heterogeneity
+  BETWEEN blocks, not by their count. A 30-minute block at 03:00 and one
+  at 18:30 are different worlds -- different demand, different congestion
+  -- so an unadjusted difference in means across arms is dominated by
+  which arm happened to draw the dinner rush. A daily block averages the
+  whole demand curve and is therefore stable.
+
+  THE PRACTITIONER CONSEQUENCE: short blocks are only worth their extra
+  count if the analysis CONTROLS for time-of-day -- paired adjacent
+  blocks, or block-level covariate adjustment on the time index. Running
+  fine-grained switchbacks and then taking a raw difference in means
+  throws away the precision the design was chosen for. That adjustment is
+  not implemented here; it is the first thing I would add.
+
+  The low variance of the daily design is also partly an artifact worth
+  naming: this simulator's days are statistically identical, so daily
+  blocks look more reliable than a real week of blocks would, where
+  day-of-week effects and weather make each day genuinely different.
+
+  BURN-IN moves every row toward truth -- 30-min bias +0.00290 -> +0.00074,
+  120-min +0.00182 -> -0.00012. The direction is exactly what carryover
+  predicts and it is consistent across granularities, but none of the
+  individual moves clears its own MC error, so the honest statement is
+  'directionally consistent with carryover, not resolved at 12 reps'
+  rather than 'burn-in removes X of bias'.
+
+  THE FRAMEWORK: choose the block just longer than the carryover window
+  (here ~34 minutes of service time), add burn-in of about that window,
+  and then ADJUST FOR TIME-OF-DAY or the extra blocks are wasted. For a
+  COURIER INCENTIVE test the carryover window is not the service time at
+  all -- it is how long a courier's repositioning decision persists,
+  which is hours. There, 15-minute blocks would be almost pure
+  contamination and 24-hour blocks the honest floor.
+
+==============================================================================
+3. ACT TWO CONTINUED -- CLUSTER / GEO RANDOMISATION
+==============================================================================
+               estimate         bias     bias_pct  mc_se_of_bias  sd_across_reps  cluster_robust_se  naive_se_if_misanalysed  se_understatement_x
+n_clusters                                                                                                                                       
+12              0.03589      0.00287      8.68145        0.00613         0.02034            0.02093                  0.00806              2.59663
+24              0.03703      0.00400     12.12015        0.00329         0.01139            0.01387                  0.00576              2.40631
+40              0.03474      0.00171      5.17758        0.00173         0.00598            0.01080                  0.00442              2.44308
+
+Bias by cluster count, against its own Monte Carlo error:
+  12 clusters:  bias +0.00287 +/- 0.00613   not distinguishable from zero
+  24 clusters:  bias +0.00400 +/- 0.00329   not distinguishable from zero
+  40 clusters:  bias +0.00171 +/- 0.00173   not distinguishable from zero
+
+THE INFERENCE ERROR, SIZED. `naive_se_if_misanalysed` is what you get
+by analysing a geo test as though customers were randomised. The
+correct cluster-robust SE is 2x to 3x larger.
+The effective sample size is the number of REGIONS, not the number of
+customers -- customers inside a region share a courier pool and are
+nothing like independent. Reporting the naive SE on a geo test
+manufactures significance out of nothing, and it is the single most
+common way these tests are misread.
+
+With few clusters even the robust SE is optimistic, so the t reference
+distribution with df = clusters - 2 is used rather than the normal.
+At 12 clusters that is 10 degrees of freedom, and the honest answer to
+'we have 12 geos' is often that the effect is not detectable at this
+size -- the options being pair-matched assignment on pre-period
+covariates, covariate adjustment, a longer run, or synthetic control.
+
+==============================================================================
+4. THE COMPARISON TABLE -- BIAS AND VARIANCE, PRICED
+==============================================================================
+True effect +0.03303  (tight market, 12 couriers/region)
+                                estimate        bias    bias_pct  mc_se_of_bias  sd_across_reps  reported_se
+design                                                                                                      
+naive user-level A/B             0.04404     0.01101    33.35118            NaN             NaN      0.00776
+switchback 1440min burn-in 0     0.03311     0.00008     0.25633        0.00262         0.00908      0.00635
+cluster / geo (12)               0.03589     0.00287     8.68145        0.00613         0.02034      0.02093
+
+
+The naive design's bias is the only one in this table that is resolved;
+both mitigations remove it. What they charge for that is NOT uniform, and
+the reported_se column says so:
+
+  naive user-level A/B           bias +0.01101   reported SE 0.00776
+  switchback 1440min burn-in 0   bias +0.00008   reported SE 0.00635
+  cluster / geo (12)             bias +0.00287   reported SE 0.02093
+
+  The GEO design pays the expected price: 2.7x the naive SE, because its
+  effective sample size is 12 regions rather than ~100,000 customers.
+  That is the textbook bias-variance trade and it shows up exactly where
+  it should.
+
+  The SWITCHBACK does NOT, and I am flagging that rather than claiming
+  it: at 0.00635 its SE is no worse than the naive design's 0.00776. Before
+  reading that as free lunch, note WHICH switchback won -- the daily
+  blocks -- and that this simulator's days are statistically identical.
+  Daily blocks are therefore unusually stable here in a way a real week
+  of blocks, with day-of-week and weather effects, would not be. The
+  finer granularities in section 2 DO carry 2-3x the variance, which is
+  the price a real deployment would pay. Treating the daily row as
+  evidence that switchbacks are free would be reading the lab as the
+  world.
+
+  The general shape survives that caveat: the choice is between a tight
+  interval around the wrong number and a wider one around the right
+  number, and in a marketplace only the second is worth shipping on.
+
+WHEN EACH ONE WINS:
+  naive A/B   -- only when the treatment cannot touch a shared resource.
+                 In a marketplace that is a short list: UI copy, an
+                 email, anything that does not change order volume. The
+                 moment it changes demand, this design is measuring its
+                 own shadow.
+  switchback  -- treatment affects the shared resource, effects decay
+                 within a known window, and the market is one pool.
+                 Cheapest unbiased option when it applies.
+  cluster/geo -- effects persist longer than any workable block
+                 (incentives, supply-side changes, anything with memory)
+                 or the market genuinely partitions geographically. Pay
+                 for it in power, and do not pretend otherwise in the SE.
+
+==============================================================================
+5. TWO-SIDED GUARDRAILS -- 'DEMAND UP, SHIP IT?'
+==============================================================================
+                              control      treated      delta
+mean_utilisation               0.4310       0.4621    +0.0311
+p95_utilisation                0.6667       0.7500    +0.0833
+mean_eta                      35.8080      38.8290    +3.0210
+p95_eta                       44.0000      57.0000   +13.0000
+orders                      7778.0000    8323.0000  +545.0000
+
+The demand-side metric is up: 8323 orders vs 7778, +7.0%.
+Courier utilisation is up +3.1 points and p95 delivery time is up +13.0
+minutes. A demand-side-only readout would call this a clean win.
+
+SHIP? Not on this evidence alone. The supply side is absorbing the whole
+gain, and the two things this simulator CANNOT see are exactly the two
+that decide it: whether couriers churn when utilisation sits at this
+level for weeks, and whether customers who waited longer come back. Both
+are long-run quantities and neither is in a 5-day experiment. The
+honest recommendation is a staged rollout with courier-supply and
+repeat-rate guardrails monitored past the experiment window, not a
+ship decision from a conversion delta.
+
+(255s)
