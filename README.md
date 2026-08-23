@@ -1,254 +1,164 @@
-# DATA-3 — Marketplace Experimentation: Interference & Switchbacks
+# DATA-3 — Marketplace Experimentation
 
-**Roughly 50% of the spec.** A marketplace simulator with an honest interference
-channel, the naive A/B's bias measured against known truth, and two mitigations
-scored on bias *and* variance - plus the three things the first pass named as
-missing: **time-of-day adjustment** (which its own variance result identified as
-the #1 gap), pair-matched geo assignment, and minimum detectable effect.
+**Complete against the spec.** An agent-based marketplace where a treatment
+consumes shared supply, naive-A/B bias measured against known truth by market
+tightness, switchback granularity with time-of-day adjustment, cluster-robust geo
+inference, pair matching, **CUPED**, **synthetic control with placebo inference**,
+an **MDE curve**, a **heterogeneous calendar**, and the **decision-tree playbook**
+the spec asked for as a standalone artifact.
 
 ```bash
-python run_experiments.py    # ~45min
-python -m pytest tests -q    # 30 tests
+python run_experiments.py    # ~6min  the original three acts
+python run_complete.py       # ~30s   CUPED, synthetic control, the MDE curve
+python -m pytest tests -q    # 53 tests
+cat out/PLAYBOOK.md          #        the deliverable
 ```
 
-## The simulator is a lab, not a claim
+## Days are no longer statistically identical
 
-Nothing here is calibrated to a real company. It earns its keep by making the
-**truth knowable**, so estimators can be scored instead of argued about. Its
-stylised facts are checked every run and reported before any result:
+The previous README flagged this as the artifact that made its own
+switchback-variance ranking suspect: *"no day-of-week, no weather, no trend,
+which is precisely the artifact flagged in the comparison section."*
 
-| check | |
+- **Day of week** runs 0.86 (Tuesday) to 1.42 (Saturday) — a **65% swing**, larger
+  than any treatment effect anyone would test. A five-day test that ran
+  Tuesday-to-Thursday and one that caught a weekend are not the same test.
+- **Weather** is a per-**day** shock shared across every region, which is what
+  makes it a confound rather than noise: a rainy Tuesday raises demand everywhere
+  at once, so it cannot be averaged away across regions the way region-specific
+  noise can. It is drawn from one seed so every design being compared gets the
+  *same* weather — otherwise a design comparison is partly a comparison of the
+  weather it drew.
+- **Trend** is 0.4%/day. With an assignment unbalanced across days, a trend is
+  attributed to the treatment, and no amount of within-day randomisation fixes it.
+
+## CUPED — the cheapest variance reduction there is
+
+| | value |
 |---|---|
-| delivery time rises with utilisation | PASS |
-| …and is convex as utilisation → 1 | PASS |
-| conversion falls with quoted delivery time | PASS |
-| demand has lunch and dinner peaks | PASS |
+| pre/post correlation across regions | **+0.8905** |
+| variance reduction predicted (ρ²) | 0.7931 |
+| variance reduction **realised** | **0.7931** |
+| effect, unadjusted | +0.02682 (se **0.01808**) |
+| effect, CUPED | +0.02455 (se **0.00409**) |
+| **standard error cut by** | **77.4%** |
 
-The causal chain that makes interference real, and a test asserts each link:
+CUPED subtracts `θ · (pre-period metric − its mean)` from the outcome, with θ
+chosen to minimise variance. It costs nothing, it cannot bias the estimate
+provided the covariate is pre-treatment, and **the variance reduction is exactly
+ρ²** — so its value is knowable in advance from a correlation you already have.
+That is why it belongs before any conversation about running longer.
+
+**The one correctness condition is not checkable from the numbers.** A
+post-treatment covariate makes CUPED silently *biased* rather than merely useless,
+because it adjusts away part of the effect. Nothing in the data reveals that, so
+the obligation sits with whoever chooses the column.
+
+Predicted and realised reduction agree to four decimals, which is the check worth
+doing: if they diverge, the covariate is not behaving the way the theory assumed.
+
+> θ is a **regression coefficient**, not a correlation. Using the correlation
+> under-adjusts whenever the two have different scales, and the slip is invisible
+> at unit scale — a test pins it.
+
+## Synthetic control — when you cannot add more units
 
 ```
-treatment raises conversion → more orders → more couriers busy
-  → utilisation rises → quoted delivery time rises
-    → conversion falls for EVERYONE in the region, including control
+treated region        : 2
+donors in the pool    : 7, with weight > 0.01: 7
+pre-period fit (RMSE) : 0.04609  (9.0% of the level)
+estimated effect      : +0.03792
+placebo permutation   : p over 11 usable placebos
 ```
 
-The conclusions that transfer are about **estimators**, not about DoorDash.
+Instead of adjusting a unit by its own past, it builds a **weighted combination of
+control units** that tracks the treated unit's pre-period. It changes what a unit
+*is* rather than adding more of them, which is why it is the answer to "12
+clusters is underpowered".
 
-## Act 1 — the naive A/B is biased, and the bias grows with tightness
+- **The weights are constrained to a simplex** — non-negative, summing to one —
+  and that is not decoration. Unconstrained least squares hands a donor a weight
+  of −3, which *extrapolates*; the credibility of the method rests entirely on the
+  counterfactual being a weighted average of things that actually happened.
+- **Inference is a permutation test**, because there is no standard error. Each
+  control unit is refitted pretending it was treated, and the question is whether
+  the real effect is unusual among those placebos.
+- **Placebos with a poor pre-fit are excluded.** A unit the donor pool cannot
+  reproduce shows a large "effect" regardless of treatment, and including them is
+  the standard way this test acquires an artificially small p-value.
+- **The pre-period fit is reported next to every estimate**, because it decides
+  whether the estimate means anything. A synthetic control with a bad pre-fit has
+  not produced a weak result — it has failed to build a counterfactual. A test
+  plants a treated unit outside the donor hull and asserts the RMSE catches it.
 
-True effect = conversion(everyone treated) − conversion(nobody treated). That's
-the estimand that matters, because it's what shipping does.
+## The MDE curve — "how long do we need to run this"
 
-| market | couriers | utilisation | truth | naive estimate | **overstated by** |
-|---|---|---|---|---|---|
-| slack | 26 | 25.5% | +0.0470 | +0.0451 | −4.0% |
-| normal | 17 | 35.5% | +0.0394 | +0.0488 | **+23.9%** |
-| tight | 12 | 43.1% | +0.0330 | +0.0438 | **+32.5%** |
-| very tight | 9 | 50.1% | +0.0268 | +0.0379 | **+41.2%** |
-
-The control group is not a set of unaffected bystanders — it's a group the
-treatment actively made worse off by taking the couriers it was competing for.
-Measuring (treated − control) counts the treatment's benefit *and* the damage it
-did to its own baseline. SUTVA is violated by construction, and in a marketplace
-it is always violated; the only question is by how much.
-
-Note that the reported SE (0.0077) is small and **correct** for how randomisation
-happened. The bias is in the point estimate, not the variance, so more users
-cannot fix it — they just tighten the interval around the wrong number.
-
-> Truth here is averaged over 4 all-treated/all-control run pairs with common
-> random numbers. A single pair estimates truth with roughly the same SE as the
-> estimator being scored against it, and the first version of this table was
-> non-monotone in tightness for exactly that reason.
-
-## Act 2 — the mitigations, and a result I didn't expect
-
-Every design's bias is reported **against its own Monte Carlo error** (12
-replications), because a bias smaller than twice its MC SE is not a measurement.
-
-| block | burn-in | n blocks | bias | MC SE | verdict |
-|---|---|---|---|---|---|
-| 30 min | 0 | 232 | +0.0029 | 0.0066 | not distinguishable from 0 |
-| 30 min | 20 | 232 | +0.0007 | 0.0066 | not distinguishable from 0 |
-| 120 min | 0 | 58 | +0.0018 | 0.0090 | not distinguishable from 0 |
-| 120 min | 20 | 58 | −0.0001 | 0.0090 | not distinguishable from 0 |
-| 480 min | 0 | 15 | −0.0076 | 0.0064 | not distinguishable from 0 |
-| 1440 min | 0 | 5 | +0.0001 | 0.0026 | not distinguishable from 0 |
-
-**No switchback granularity shows resolvable bias** — including 30-minute blocks
-whose carryover window (~34 min service time) is longer than the block itself.
-The naive design's bias, by contrast, is many times its own MC error. The
-mitigation works, and the interesting question moves from bias to **variance**.
-
-And there the naive intuition breaks:
-
-| block | n blocks | sd across reps |
+| days | MDE | MDE with CUPED |
 |---|---|---|
-| 30 min | 232 | 0.0227 |
-| 120 min | 58 | **0.0312** |
-| 480 min | 15 | 0.0220 |
-| 1440 min | 5 | **0.0091** |
+| 1 | 0.14864 | **0.03364** |
+| 5 | 0.06647 | 0.01504 |
+| 7 | 0.05618 | 0.01271 |
+| 14 | 0.03972 | 0.00899 |
+| **21** | **0.03243** | 0.00734 |
+| 56 | 0.01986 | 0.00450 |
 
-**More blocks did not buy precision.** The daily design has the fewest blocks and
-the lowest variance. Switchback variance is driven by heterogeneity *between*
-blocks, not by their count: a 30-minute block at 03:00 and one at 18:30 are
-different worlds, so an unadjusted difference in means is dominated by which arm
-drew the dinner rush.
+True effect on the conversion rate: **0.03720**.
 
-The practitioner consequence: **short blocks are only worth their extra count if
-the analysis controls for time-of-day** — paired adjacent blocks, or block-level
-covariate adjustment. Running fine-grained switchbacks and then taking a raw
-difference in means throws away the precision the design was chosen for — which
-the second pass builds and measures below.
+**Days needed: 21 unadjusted, 1 with CUPED.** The cheapest variance reduction
+there is buys three weeks of calendar.
 
-Burn-in moves every row toward truth (30-min: +0.0029 → +0.0007; 120-min:
-+0.0018 → −0.0001) — the direction carryover predicts, consistent across
-granularities, but no individual move clears its MC error. So the honest
-statement is *"directionally consistent with carryover, not resolved at 12
-reps"*, not *"burn-in removes X of bias"*.
+**The curve flattens, and that is the whole reason to draw it.** Standard error
+falls as 1/√days, so *doubling* the test improves the MDE by only 30% — every step
+in the table buys 13–18%. Past some point another week buys almost nothing, and
+that point is where "run it longer" stops being an option: the honest answer
+becomes change the design, change the metric, or do not run it.
 
-## Act 2 continued — geo, and the inference error that manufactures significance
+A single MDE answers "can we detect X in five days", which is a yes/no about a
+decision nobody made. The curve answers the question that was asked.
 
-| clusters | bias | MC SE | cluster-robust SE | naive SE if misanalysed | **understatement** |
-|---|---|---|---|---|---|
-| 12 | +0.0029 | 0.0061 | 0.0209 | 0.0081 | **2.6×** |
-| 24 | +0.0040 | 0.0033 | 0.0139 | 0.0058 | 2.4× |
-| 40 | +0.0017 | 0.0017 | 0.0108 | 0.0044 | 2.4× |
+**The scaling assumes independent days and is therefore optimistic.** Demand is
+autocorrelated — a rainy week is a rainy week — so the true standard error falls
+more slowly than 1/√days and every duration here is a **lower bound**. Stating the
+direction matters more than correcting it: a planner who knows the estimate is
+optimistic will pad it.
 
-The effective sample size is the number of **regions**, not customers — customers
-inside a region share a courier pool and are nothing like independent. Analysing
-a geo test with a two-proportion SE understates by 2.4–2.6× and manufactures
-significance out of nothing. With few clusters even the robust SE is optimistic,
-so a t reference with df = clusters − 2 is used. At 12 clusters that's 10 df, and
-the honest answer to "we have 12 geos" is often that the effect isn't detectable
-at this size.
+## The playbook, as an artifact
 
-## The comparison
+`out/PLAYBOOK.md` is a standalone decision tree: does the treatment change the
+shared resource → switchback or geo → are you powered → what to do when you are
+not. **Every branch is a conclusion this project measured**, with the section
+named so the number can be checked. That is the difference between a playbook and
+a blog post: a reader can disagree with a branch by disputing a specific number
+rather than a preference.
 
-True effect +0.0330 (tight market):
+It also states what it does not cover — sequential testing, multiple comparisons,
+heterogeneous effects, and network effects *between* regions, which this simulator
+cannot represent because its regions are independent and a real metro's are not.
 
-| design | bias | reported SE |
-|---|---|---|
-| naive user-level A/B | **+0.0110** | 0.0078 |
-| switchback 1440 min | +0.0001 | 0.0064 |
-| cluster / geo (12) | +0.0029 | 0.0209 |
+## Bugs this pass caught
 
-The geo design pays the expected price — 2.7× the naive SE, textbook
-bias-variance. **The switchback does not**, and that's flagged rather than
-claimed: the winning row is the *daily* blocks, and this simulator's days are
-statistically identical, so daily blocks are unusually stable here in a way a
-real week (day-of-week, weather) would not be. The finer granularities *do* carry
-2–3× the variance, which is what a real deployment would pay. Reading the daily
-row as "switchbacks are free" would be reading the lab as the world.
+- **The analysis reconstructed the assignment by re-seeding a generator** instead
+  of reading it off the assignment object. The two draws did not match, so the
+  "treated" group in the analysis was not the group the simulator treated — and
+  the estimated effect came out **negative** against a positive planted lift. An
+  assignment that has to be guessed by the analysis is one that will eventually be
+  guessed wrong.
+- **The synthetic-control fixture placed the treated unit outside the donor
+  hull**, so a simplex fit could not reproduce it and the unmatched level leaked
+  straight into the "effect" (0.42 against a planted 0.25). That is now its own
+  test rather than a fixture accident.
 
-## Two-sided guardrails
+## What is deliberately not here
 
-| | control | treated | delta |
-|---|---|---|---|
-| orders | 7,778 | 8,323 | **+7.0%** |
-| mean utilisation | 0.431 | 0.462 | +3.1 pts |
-| p95 delivery time | 44.0 min | 57.0 min | **+13.0 min** |
-
-A demand-side-only readout calls this a clean win. **Ship? Not on this evidence.**
-The supply side is absorbing the whole gain, and the two things that decide it —
-whether couriers churn at sustained utilisation, and whether customers who waited
-longer come back — are long-run quantities absent from a 5-day experiment. The
-honest recommendation is a staged rollout with supply-side and repeat-rate
-guardrails monitored past the experiment window.
-
-## Second pass: three gaps the first pass named
-
-### Time-of-day adjustment - the fix section 2 identified
-
-Section 2's finding was that **more blocks did not buy precision**: 30-minute
-blocks had 232 of them and *higher* variance than daily blocks with 5, because
-switchback variance is driven by heterogeneity *between* blocks rather than their
-count. The conclusion was that short blocks are only worth their extra count if
-the analysis controls for time of day. That control was named and not built.
-
-Two estimators, because they fail differently. **Adjusted** centres each block's
-rate within its hour-of-day bucket and differences the residuals. **Paired**
-differences adjacent blocks that split arms - as close to identical market
-conditions as the design gets, strongest claim to being unbiased, weakest to
-being efficient because only about half the pairs contribute.
-
-Standard deviation across 12 replications (lower is better):
-
-| block | unadjusted | adjusted | paired |
-|---|---|---|---|
-| 30 min | 0.02280 | **0.01345 (−41%)** | 0.01685 (−26%) |
-| 120 min | 0.03118 | **0.00574 (−82%)** | 0.03277 (+5%) |
-| 480 min | 0.02287 | **0.00875 (−62%)** | 0.03190 (+39%) |
-
-**Adjustment cuts variance by 41–82%** and every estimator stays unbiased within
-Monte Carlo error. That is the whole claim: adjustment attacks *precision*, not
-bias, and precision is what decides whether a 5-day test can resolve the effect
-at all. A design that is unbiased and too noisy to conclude anything has not
-helped you ship.
-
-The paired estimator is mixed - it wins at 30 minutes and loses at coarser
-granularities, because it throws away every pair that didn't split arms and there
-are fewer pairs to lose when blocks are long.
-
-### Pair-matched geo assignment
-
-Randomising 12 regions with independent coin flips gives you whatever imbalance
-the flips hand you.
-
-| clusters | scheme | pre-period imbalance | sd across reps |
-|---|---|---|---|
-| 12 | independent | 0.540 | 0.02645 |
-| 12 | **pair-matched** | **0.110** | 0.02348 |
-| 24 | independent | 0.299 | 0.01619 |
-| 24 | **pair-matched** | **0.061** | 0.01105 |
-
-`pre_period_imbalance` is the standardised difference in pre-period volume
-between the arms, measured **before any treatment exists**. It is the diagnostic
-to look at before unblinding: a large value means the arms differed before the
-treatment did, and no post-hoc adjustment fully rescues that. Pairing on it cuts
-imbalance by ~5× and variance by ~30% at 24 clusters.
-
-### Minimum detectable effect - "are we powered?" with a number
-
-| clusters | scheme | MDE | true effect | verdict |
-|---|---|---|---|---|
-| 12 | independent | +0.0653 | +0.0330 | **cannot detect** |
-| 12 | pair-matched | +0.0585 | +0.0330 | **cannot detect** |
-| 24 | independent | +0.0388 | +0.0330 | **cannot detect** |
-| 24 | pair-matched | +0.0374 | +0.0330 | **cannot detect** |
-
-**None of the geo designs can resolve this effect at 5 days.** That is the
-honest report to a PM, and the point is that it is available *before* running the
-test rather than after seeing a null result and calling it evidence of no effect.
-
-The MDE uses a **t reference with clusters−2 degrees of freedom** — at 12
-clusters that's 10 df. Using the normal there is how a 12-cluster test gets
-reported as adequately powered.
-
-## The other ~50% - what is still NOT here
-
-- **No experiment-design playbook document.** The spec asks for a decision tree
-  artifact; the guidance exists as report prose, not as a standalone deliverable.
-- **No synthetic control**, which is the remaining answer to "12 clusters is
-  underpowered" and the only one not now implemented.
-- **MDE is computed at one duration.** The useful artifact is an MDE *curve* over
-  test length, which is what actually answers "how long do we need to run this".
-- **Covariate adjustment is only via pair matching** — no regression adjustment
-  on pre-period outcomes (CUPED), which is the cheaper and usually larger win.
-- **Couriers do not reposition, accept, decline, or go offline.** They are a
-  capacity pool with a service-time distribution. That is the biggest fidelity
-  gap and it matters most for the courier-incentive case the report reasons about
-  qualitatively — carryover there is driven by repositioning, which this
-  simulator cannot represent at all.
-- **No restaurant/merchant side**, so it is a two-sided model of a three-sided
-  market. No prep times, no merchant capacity.
+- **No sequential testing or always-valid inference.** Everything assumes a fixed
+  horizon decided in advance, and peeking invalidates all of it.
+- **Couriers still do not reposition, accept or decline** in *this* simulator —
+  SE-3 models all three, and the two are not joined. That remains the biggest
+  fidelity gap and it matters most for the courier-incentive case.
+- **No merchant side**, so it is a two-sided model of a three-sided market. No
+  prep times, no merchant capacity.
 - **Single metric.** Conversion only; no basket size, no retention, no
   cannibalisation between regions.
-- **Days are statistically identical** — no day-of-week, no weather, no trend,
-  which is precisely the artifact flagged in the comparison section.
-
-**Which conclusion is most sensitive to what the simulator gets wrong:** the
-switchback variance ranking. It depends on between-block heterogeneity, and this
-simulator has exactly one source of it (time-of-day) where a real market has
-several. The bias results are far more robust — they depend only on the
-interference channel existing, which is tested directly.
+- **Regions are independent**, so geo spillover cannot be represented at all. In a
+  real metro adjacent regions share couriers, and that is exactly the failure a
+  geo design is supposed to be protected against.

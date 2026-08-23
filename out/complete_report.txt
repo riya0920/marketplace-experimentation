@@ -1,0 +1,172 @@
+==============================================================================
+DATA-3 COMPLETION PASS
+==============================================================================
+
+==============================================================================
+A. DAYS ARE NO LONGER STATISTICALLY IDENTICAL
+==============================================================================
+The previous README flagged this as the artifact that made the
+switchback-variance ranking suspect: 'no day-of-week, no weather, no
+trend, which is precisely the artifact flagged in the comparison
+section'.
+
+ day dow  multiplier
+   0 Mon      0.8800
+   1 Tue      0.8634
+   2 Wed      0.9274
+   3 Thu      1.0728
+   4 Fri      1.3616
+   5 Sat      1.4486
+   6 Sun      1.1472
+   7 Mon      0.9049
+   8 Tue      0.8879
+   9 Wed      0.9537
+  10 Thu      1.1032
+  11 Fri      1.4002
+  12 Sat      1.4897
+  13 Sun      1.1797
+
+  Day-of-week runs 0.86 (Tue) to 1.42 (Sat) -- a 65% swing, larger
+  than any treatment effect anyone would test. A five-day test that
+  ran Tuesday-to-Thursday and one that caught a weekend are not the
+  same test, and a simulator where every day is identical cannot
+  represent that at all.
+
+  WEATHER is a per-DAY shock shared across every region, which is what
+  makes it a confound rather than noise: a rainy Tuesday raises demand
+  everywhere at once, so it cannot be averaged away across regions the
+  way region-specific noise can. It is drawn from one seed so that
+  every design being compared gets the SAME weather -- otherwise a
+  design comparison is partly a comparison of the weather it drew.
+
+  TREND is 0.4%/day. With an assignment that is unbalanced across
+  days, a trend is attributed to the treatment, and no amount of
+  within-day randomisation fixes it -- which is the argument for
+  balancing on days rather than only on users.
+
+==============================================================================
+B. CUPED -- THE CHEAPEST VARIANCE REDUCTION THERE IS
+==============================================================================
+  pre/post correlation across regions : +0.8905
+  variance reduction predicted (rho^2): 0.7931
+  variance reduction realised         : 0.7931
+
+  effect, unadjusted : +0.02682  (se 0.01808)
+  effect, CUPED      : +0.02455  (se 0.00409)
+  standard error cut by 77.4%
+
+  CUPED SUBTRACTS theta * (pre-period metric - its mean) from the
+  outcome, with theta chosen to minimise variance. It costs nothing, it
+  cannot bias the estimate provided the covariate is PRE-TREATMENT, and
+  the variance reduction is exactly rho^2 -- so its value is knowable in
+  advance from a correlation you already have. That is why it belongs
+  before any conversation about running longer.
+
+  THE ONE CORRECTNESS CONDITION IS NOT CHECKABLE FROM THE NUMBERS. A
+  post-treatment covariate makes CUPED silently BIASED rather than
+  merely useless, because it adjusts away part of the effect. Nothing in
+  the data reveals that, so the obligation sits with whoever chooses the
+  column -- here, the pre-period conversion rate measured before the
+  treatment existed.
+
+  Predicted and realised reduction agree to 0.0000, which is the check
+  worth doing: if they diverge, the covariate is not behaving the way
+  the theory assumed and the adjustment should not be trusted.
+
+==============================================================================
+C. SYNTHETIC CONTROL -- WHEN YOU CANNOT ADD MORE UNITS
+==============================================================================
+  treated region        : 2
+  donors in the pool    : 7, with weight > 0.01: 7
+  pre-period fit (RMSE) : 0.04609  (9.0% of the level)
+  post treated          : 0.53625
+  post synthetic        : 0.49834
+  estimated effect      : +0.03792  (true lift 0.0600 on conversion)
+
+  placebo permutation   : p = 0.1667 over 11 usable placebos
+
+  SYNTHETIC CONTROL CHANGES WHAT A UNIT IS rather than adding more of
+  them, which is why it is the answer to '12 clusters is underpowered'.
+  Instead of adjusting a unit by its own past, it builds a weighted
+  combination of control units that tracks the treated unit's
+  pre-period and uses that as the counterfactual.
+
+  THE WEIGHTS ARE CONSTRAINED TO A SIMPLEX -- non-negative, summing to
+  one -- and that is not decoration. Unconstrained least squares will
+  hand a donor a weight of -3, which EXTRAPOLATES; the credibility of
+  the method rests entirely on the counterfactual being a weighted
+  average of things that actually happened.
+
+  INFERENCE IS A PERMUTATION TEST, because there is no standard error.
+  Each control unit is refitted pretending it was treated, and the
+  question is whether the real effect is unusual among those placebos.
+  Placebos whose own pre-fit is poor are EXCLUDED: a unit the donor pool
+  cannot reproduce shows a large 'effect' regardless of treatment, and
+  including them is the standard way this test acquires an artificially
+  small p-value.
+
+  The pre-period fit is 9.0% of the level, which is tight enough
+  for the estimate to be worth reading.
+
+==============================================================================
+D. THE MDE CURVE -- 'HOW LONG DO WE NEED TO RUN THIS'
+==============================================================================
+Measured standard error at 7 days: 0.01808 unadjusted, 0.00409 with CUPED.
+
+    days            MDE MDE with CUPED
+       1        0.14864        0.03364
+       2        0.10510        0.02379
+       3        0.08581        0.01942
+       5        0.06647        0.01504
+       7        0.05618        0.01271
+      10        0.04700        0.01064
+      14        0.03972        0.00899
+      21        0.03243        0.00734
+      28        0.02809        0.00636
+      42        0.02293        0.00519
+      56        0.01986        0.00450
+
+  True effect on the conversion rate: 0.03720
+  Days needed, unadjusted : 21
+  Days needed, with CUPED : 1
+
+  What each step buys (unadjusted):
+    10 -> 14 days: MDE 0.04700 -> 0.03972  (15.5% better)
+    14 -> 21 days: MDE 0.03972 -> 0.03243  (18.4% better)
+    21 -> 28 days: MDE 0.03243 -> 0.02809  (13.4% better)
+    28 -> 42 days: MDE 0.02809 -> 0.02293  (18.4% better)
+    42 -> 56 days: MDE 0.02293 -> 0.01986  (13.4% better)
+
+  THE CURVE FLATTENS, and that is the whole reason to draw it. Standard
+  error falls as 1/sqrt(days), so DOUBLING the test improves the MDE by
+  only 30%. Past some point another week buys almost nothing, and that
+  point is where 'run it longer' stops being an option -- the honest
+  answer becomes change the design, change the metric, or do not run it.
+
+  A single MDE answers 'can we detect X in five days', which is a
+  yes/no about a decision nobody made. The curve answers 'how long',
+  which is the question that was asked.
+
+  THE SCALING ASSUMES INDEPENDENT DAYS AND IS THEREFORE OPTIMISTIC.
+  Demand is autocorrelated -- a rainy week is a rainy week -- so the
+  true standard error falls more slowly than 1/sqrt(days) and every
+  duration here is a LOWER BOUND. Stating the direction matters more
+  than correcting it: a planner who knows the estimate is optimistic
+  will pad it.
+
+==============================================================================
+E. THE PLAYBOOK, AS AN ARTIFACT
+==============================================================================
+Written to out/PLAYBOOK.md -- a standalone decision tree, which is what
+the spec asked for and what the previous pass had only as report prose.
+
+  Every branch in it is a conclusion this project MEASURED, with the
+  section named so the number can be checked. That is the difference
+  between a playbook and a blog post: a reader can disagree with a
+  branch by disputing a specific number rather than a preference.
+
+  It also states what it does not cover -- sequential testing, multiple
+  comparisons, heterogeneous effects, and network effects BETWEEN
+  regions, which this simulator cannot represent because its regions
+  are independent and a real metro's are not.
+

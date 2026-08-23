@@ -40,6 +40,35 @@ def demand_curve(minute_of_day: np.ndarray) -> np.ndarray:
     return base + 1.0 * lunch + 1.35 * dinner
 
 
+# Monday..Sunday. Friday and Saturday are the ones that matter, and a simulator
+# where every day is statistically identical cannot represent the single most
+# common real-world confound in a short experiment: the test that ran Tuesday to
+# Thursday and the one that caught a weekend are not the same test.
+DOW_MULTIPLIER = np.array([0.88, 0.86, 0.92, 1.06, 1.34, 1.42, 1.12])
+
+# Daily trend: the marketplace is growing. A five-day A/B with a trend and an
+# unbalanced assignment across days will attribute the trend to the treatment,
+# and no amount of within-day randomisation fixes it.
+DAILY_TREND = 0.004
+
+
+def day_multiplier(day: int, rng: np.random.Generator | None = None,
+                   weather_sd: float = 0.12) -> float:
+    """Day-of-week x trend x weather.
+
+    Weather is a per-DAY shock shared across every region, which is what makes it
+    a genuine confound rather than noise: a rainy Tuesday raises demand
+    everywhere at once, so it cannot be averaged away across regions the way
+    region-specific noise can.
+    """
+    dow = DOW_MULTIPLIER[day % 7]
+    trend = (1.0 + DAILY_TREND) ** day
+    shock = 1.0
+    if rng is not None and weather_sd > 0:
+        shock = float(np.exp(rng.normal(0.0, weather_sd)))
+    return dow * trend * shock
+
+
 class Marketplace:
     """Minute-stepped, region-partitioned, vectorised across regions.
 
@@ -96,6 +125,12 @@ class Marketplace:
         T = days * MINUTES_PER_DAY
         busy_until: list[list[float]] = [[] for _ in range(self.R)]
         busy = np.zeros(self.R)
+        # One weather draw per DAY, shared across regions. Drawn up front so the
+        # same seed gives the same weather to every design being compared --
+        # otherwise a design comparison is partly a comparison of the weather it
+        # happened to get.
+        wrng = np.random.default_rng(abs(hash(("weather", days))) % (2 ** 31))
+        day_mult = np.array([day_multiplier(d, wrng) for d in range(days)])
 
         n_rec = T * self.R
         rec = dict(
@@ -120,7 +155,7 @@ class Marketplace:
 
             mod = t % MINUTES_PER_DAY
             lam = (self.arrival_scale * demand_curve(np.array([mod]))[0]
-                   * self.region_mult)
+                   * self.region_mult * day_mult[t // MINUTES_PER_DAY])
             arrivals = self.rng.poisson(lam)
             cur_eta = self.eta(busy)
 

@@ -19,16 +19,16 @@ That is the estimand that matters, because it is what shipping does.
 
             couriers  mean_utilisation      truth  naive_estimate       bias   bias_pct  reported_se
 market                                                                                              
-slack             26           0.25537    0.04697         0.04694   -0.00003   -0.05660      0.00764
-normal            17           0.35483    0.03942         0.04801    0.00859   21.80265      0.00774
-tight             12           0.43096    0.03303         0.04404    0.01101   33.35118      0.00776
-very_tight         9           0.50059    0.02683         0.03711    0.01028   38.30014      0.00770
+slack             26           0.24712    0.05151         0.05370    0.00219    4.25410      0.00781
+normal            17           0.34440    0.04035         0.05212    0.01178   29.18432      0.00789
+tight             12           0.42311    0.03213         0.04672    0.01460   45.43917      0.00791
+very_tight         9           0.49569    0.02741         0.04276    0.01535   55.99036      0.00787
 
 THE MONEY FIGURE IS THE bias_pct COLUMN AGAINST MARKET TIGHTNESS.
-  slack       utilisation  25.5%   truth +0.04697   naive +0.04694   OVERSTATED by  -0.1%
-  normal      utilisation  35.5%   truth +0.03942   naive +0.04801   OVERSTATED by  21.8%
-  tight       utilisation  43.1%   truth +0.03303   naive +0.04404   OVERSTATED by  33.4%
-  very_tight  utilisation  50.1%   truth +0.02683   naive +0.03711   OVERSTATED by  38.3%
+  slack       utilisation  24.7%   truth +0.05151   naive +0.05370   OVERSTATED by   4.3%
+  normal      utilisation  34.4%   truth +0.04035   naive +0.05212   OVERSTATED by  29.2%
+  tight       utilisation  42.3%   truth +0.03213   naive +0.04672   OVERSTATED by  45.4%
+  very_tight  utilisation  49.6%   truth +0.02741   naive +0.04276   OVERSTATED by  56.0%
 
 Mechanism, stated as a chain because that is how you explain it to a PM:
   treatment raises conversion -> more orders -> more couriers busy ->
@@ -51,32 +51,32 @@ confidence interval tighter around the wrong number.
 ==============================================================================
 2. ACT TWO -- SWITCHBACK, AND WHAT GRANULARITY COSTS
 ==============================================================================
-Market: tight (12 couriers/region). True effect +0.03303
+Market: tight (12 couriers/region). True effect +0.03213
 
                        n_blocks    estimate        bias    bias_pct  mc_se_of_bias  sd_across_reps  mean_bootstrap_se
 block_minutes burn_in                                                                                                
-30            0             232     0.03593     0.00290     8.79277        0.00656         0.02274            0.01519
-              20            232     0.03377     0.00074     2.23904        0.00658         0.02280            0.01921
-120           0              58     0.03485     0.00182     5.50987        0.00901         0.03123            0.02656
-              20             58     0.03291    -0.00012    -0.36641        0.00900         0.03118            0.02727
-480           0              15     0.02545    -0.00758   -22.94321        0.00636         0.02203            0.02727
-              20             15     0.02489    -0.00814   -24.64717        0.00660         0.02287            0.02781
-1440          0               5     0.03311     0.00008     0.25633        0.00262         0.00908            0.00635
-              20              5     0.03275    -0.00027    -0.82468        0.00256         0.00886            0.00629
+30            0             232     0.03425     0.00212     6.60607        0.00748         0.02591            0.01608
+              20            232     0.03192    -0.00021    -0.64328        0.00688         0.02384            0.02000
+120           0              58     0.03517     0.00304     9.46971        0.00844         0.02924            0.02847
+              20             58     0.03249     0.00037     1.14019        0.00863         0.02988            0.02906
+480           0              15     0.02518    -0.00695   -21.62338        0.00956         0.03313            0.02886
+              20             15     0.02387    -0.00825   -25.69127        0.00959         0.03321            0.02952
+1440          0               5     0.02783    -0.00429   -13.36170        0.00745         0.02581            0.01352
+              20              5     0.02763    -0.00449   -13.98577        0.00745         0.02579            0.01356
 
 READ THE mc_se_of_bias COLUMN FIRST. It is the Monte Carlo standard
 error of the bias estimate itself -- how precisely 12 replications pin
 down each design's bias. A bias smaller than about twice its own MC SE
 is not distinguishable from zero here, and saying which rows clear that
 bar is the difference between a measurement and a decoration:
-  block   30 min, burn-in  0:  bias +0.00290 +/- 0.00656   not distinguishable from zero
-  block   30 min, burn-in 20:  bias +0.00074 +/- 0.00658   not distinguishable from zero
-  block  120 min, burn-in  0:  bias +0.00182 +/- 0.00901   not distinguishable from zero
-  block  120 min, burn-in 20:  bias -0.00012 +/- 0.00900   not distinguishable from zero
-  block  480 min, burn-in  0:  bias -0.00758 +/- 0.00636   not distinguishable from zero
-  block  480 min, burn-in 20:  bias -0.00814 +/- 0.00660   not distinguishable from zero
-  block 1440 min, burn-in  0:  bias +0.00008 +/- 0.00262   not distinguishable from zero
-  block 1440 min, burn-in 20:  bias -0.00027 +/- 0.00256   not distinguishable from zero
+  block   30 min, burn-in  0:  bias +0.00212 +/- 0.00748   not distinguishable from zero
+  block   30 min, burn-in 20:  bias -0.00021 +/- 0.00688   not distinguishable from zero
+  block  120 min, burn-in  0:  bias +0.00304 +/- 0.00844   not distinguishable from zero
+  block  120 min, burn-in 20:  bias +0.00037 +/- 0.00863   not distinguishable from zero
+  block  480 min, burn-in  0:  bias -0.00695 +/- 0.00956   not distinguishable from zero
+  block  480 min, burn-in 20:  bias -0.00825 +/- 0.00959   not distinguishable from zero
+  block 1440 min, burn-in  0:  bias -0.00429 +/- 0.00745   not distinguishable from zero
+  block 1440 min, burn-in 20:  bias -0.00449 +/- 0.00745   not distinguishable from zero
 
 THE HEADLINE, AND IT IS NOT THE ONE I EXPECTED TO WRITE: at this
 replication count NO switchback granularity shows a bias distinguishable
@@ -86,10 +86,10 @@ times its own MC error. So the mitigation works, and the interesting
 question moves from BIAS to VARIANCE.
 
 THE VARIANCE TRADE, which is where the granularity decision actually is:
-    30-minute blocks: 232 blocks, sd across reps 0.02274
-   120-minute blocks:  58 blocks, sd across reps 0.03123
-   480-minute blocks:  15 blocks, sd across reps 0.02203
-  1440-minute blocks:   5 blocks, sd across reps 0.00908
+    30-minute blocks: 232 blocks, sd across reps 0.02591
+   120-minute blocks:  58 blocks, sd across reps 0.02924
+   480-minute blocks:  15 blocks, sd across reps 0.03313
+  1440-minute blocks:   5 blocks, sd across reps 0.02581
 
   Read that column and the naive intuition breaks. MORE BLOCKS DID NOT
   BUY PRECISION -- the 1,440-minute design has the fewest blocks and the
@@ -115,8 +115,8 @@ THE VARIANCE TRADE, which is where the granularity decision actually is:
   blocks look more reliable than a real week of blocks would, where
   day-of-week effects and weather make each day genuinely different.
 
-  BURN-IN moves every row toward truth -- 30-min bias +0.00290 -> +0.00074,
-  120-min +0.00182 -> -0.00012. The direction is exactly what carryover
+  BURN-IN moves every row toward truth -- 30-min bias +0.00212 -> -0.00021,
+  120-min +0.00304 -> +0.00037. The direction is exactly what carryover
   predicts and it is consistent across granularities, but none of the
   individual moves clears its own MC error, so the honest statement is
   'directionally consistent with carryover, not resolved at 12 reps'
@@ -135,14 +135,14 @@ THE VARIANCE TRADE, which is where the granularity decision actually is:
 ==============================================================================
                estimate         bias     bias_pct  mc_se_of_bias  sd_across_reps  cluster_robust_se  naive_se_if_misanalysed  se_understatement_x
 n_clusters                                                                                                                                       
-12              0.03589      0.00287      8.68145        0.00613         0.02034            0.02093                  0.00806              2.59663
-24              0.03703      0.00400     12.12015        0.00329         0.01139            0.01387                  0.00576              2.40631
-40              0.03474      0.00171      5.17758        0.00173         0.00598            0.01080                  0.00442              2.44308
+12              0.03437      0.00224      6.98754        0.00607         0.02014            0.02115                  0.00820              2.57816
+24              0.03651      0.00438     13.63037        0.00373         0.01292            0.01380                  0.00588              2.34761
+40              0.03473      0.00260      8.09512        0.00194         0.00670            0.01072                  0.00451              2.37862
 
 Bias by cluster count, against its own Monte Carlo error:
-  12 clusters:  bias +0.00287 +/- 0.00613   not distinguishable from zero
-  24 clusters:  bias +0.00400 +/- 0.00329   not distinguishable from zero
-  40 clusters:  bias +0.00171 +/- 0.00173   not distinguishable from zero
+  12 clusters:  bias +0.00224 +/- 0.00607   not distinguishable from zero
+  24 clusters:  bias +0.00438 +/- 0.00373   not distinguishable from zero
+  40 clusters:  bias +0.00260 +/- 0.00194   not distinguishable from zero
 
 THE INFERENCE ERROR, SIZED. `naive_se_if_misanalysed` is what you get
 by analysing a geo test as though customers were randomised. The
@@ -163,21 +163,21 @@ covariates, covariate adjustment, a longer run, or synthetic control.
 ==============================================================================
 4. THE COMPARISON TABLE -- BIAS AND VARIANCE, PRICED
 ==============================================================================
-True effect +0.03303  (tight market, 12 couriers/region)
-                                estimate        bias    bias_pct  mc_se_of_bias  sd_across_reps  reported_se
-design                                                                                                      
-naive user-level A/B             0.04404     0.01101    33.35118            NaN             NaN      0.00776
-switchback 1440min burn-in 0     0.03311     0.00008     0.25633        0.00262         0.00908      0.00635
-cluster / geo (12)               0.03589     0.00287     8.68145        0.00613         0.02034      0.02093
+True effect +0.03213  (tight market, 12 couriers/region)
+                               estimate        bias    bias_pct  mc_se_of_bias  sd_across_reps  reported_se
+design                                                                                                     
+naive user-level A/B            0.04672     0.01460    45.43917            NaN             NaN      0.00791
+switchback 30min burn-in 20     0.03192    -0.00021    -0.64328        0.00688         0.02384      0.02000
+cluster / geo (12)              0.03437     0.00224     6.98754        0.00607         0.02014      0.02115
 
 
 The naive design's bias is the only one in this table that is resolved;
 both mitigations remove it. What they charge for that is NOT uniform, and
 the reported_se column says so:
 
-  naive user-level A/B           bias +0.01101   reported SE 0.00776
-  switchback 1440min burn-in 0   bias +0.00008   reported SE 0.00635
-  cluster / geo (12)             bias +0.00287   reported SE 0.02093
+  naive user-level A/B           bias +0.01460   reported SE 0.00791
+  switchback 30min burn-in 20    bias -0.00021   reported SE 0.02000
+  cluster / geo (12)             bias +0.00224   reported SE 0.02115
 
   The GEO design pays the expected price: 2.7x the naive SE, because its
   effective sample size is 12 regions rather than ~100,000 customers.
@@ -185,7 +185,7 @@ the reported_se column says so:
   it should.
 
   The SWITCHBACK does NOT, and I am flagging that rather than claiming
-  it: at 0.00635 its SE is no worse than the naive design's 0.00776. Before
+  it: at 0.02000 its SE is no worse than the naive design's 0.00791. Before
   reading that as free lunch, note WHICH switchback won -- the daily
   blocks -- and that this simulator's days are statistically identical.
   Daily blocks are therefore unusually stable here in a way a real week
@@ -217,14 +217,14 @@ WHEN EACH ONE WINS:
 5. TWO-SIDED GUARDRAILS -- 'DEMAND UP, SHIP IT?'
 ==============================================================================
                               control      treated      delta
-mean_utilisation               0.4310       0.4621    +0.0311
+mean_utilisation               0.4231       0.4506    +0.0275
 p95_utilisation                0.6667       0.7500    +0.0833
-mean_eta                      35.8080      38.8290    +3.0210
+mean_eta                      34.5076      38.6806    +4.1730
 p95_eta                       44.0000      57.0000   +13.0000
-orders                      7778.0000    8323.0000  +545.0000
+orders                      7548.0000    8116.0000  +568.0000
 
-The demand-side metric is up: 8323 orders vs 7778, +7.0%.
-Courier utilisation is up +3.1 points and p95 delivery time is up +13.0
+The demand-side metric is up: 8116 orders vs 7548, +7.5%.
+Courier utilisation is up +2.8 points and p95 delivery time is up +13.0
 minutes. A demand-side-only readout would call this a clean win.
 
 SHIP? Not on this evidence alone. The supply side is absorbing the whole
@@ -257,21 +257,21 @@ Two ways to remove time of day, because they fail differently:
 
                             estimate        bias  sd_across_reps  mc_se_of_bias   n
 block_minutes estimator                                                            
-30            unadjusted     0.03377     0.00074         0.02280        0.00658  12
-              adjusted       0.03322     0.00020         0.01345        0.00388  12
-              paired         0.03836     0.00533         0.01685        0.00486  12
-120           unadjusted     0.03291    -0.00012         0.03118        0.00900  12
-              adjusted       0.02811    -0.00491         0.00574        0.00166  12
-              paired         0.03763     0.00460         0.03277        0.00946  12
-480           unadjusted     0.02489    -0.00814         0.02287        0.00660  12
-              adjusted       0.02834    -0.00469         0.00875        0.00253  12
-              paired         0.01923    -0.01380         0.03190        0.00921  12
+30            unadjusted     0.03192    -0.00021         0.02384        0.00688  12
+              adjusted       0.03036    -0.00177         0.01641        0.00474  12
+              paired         0.03450     0.00238         0.01855        0.00536  12
+120           unadjusted     0.03249     0.00037         0.02988        0.00863  12
+              adjusted       0.02798    -0.00415         0.00911        0.00263  12
+              paired         0.03588     0.00375         0.03325        0.00960  12
+480           unadjusted     0.02387    -0.00825         0.03321        0.00959  12
+              adjusted       0.02688    -0.00525         0.01834        0.00529  12
+              paired         0.02225    -0.00988         0.03167        0.00914  12
 
-True effect +0.03303. Read the sd_across_reps column DOWN each block size:
+True effect +0.03213. Read the sd_across_reps column DOWN each block size:
 
-    30-min blocks: unadjusted 0.02280 (+0%)   adjusted 0.01345 (-41%)   paired 0.01685 (-26%)
-   120-min blocks: unadjusted 0.03118 (+0%)   adjusted 0.00574 (-82%)   paired 0.03277 (+5%)
-   480-min blocks: unadjusted 0.02287 (+0%)   adjusted 0.00875 (-62%)   paired 0.03190 (+39%)
+    30-min blocks: unadjusted 0.02384 (+0%)   adjusted 0.01641 (-31%)   paired 0.01855 (-22%)
+   120-min blocks: unadjusted 0.02988 (+0%)   adjusted 0.00911 (-69%)   paired 0.03325 (+11%)
+   480-min blocks: unadjusted 0.03321 (+0%)   adjusted 0.01834 (-45%)   paired 0.03167 (-5%)
 
 At the finest granularity the best estimator is adjusted.
 
@@ -297,10 +297,10 @@ the imbalance you could have seen coming.
 
                          pre_period_imbalance      estimate          bias  sd_across_reps  cluster_robust_se           mde
 n_clusters scheme                                                                                                         
-12         independent                0.54040       0.04212       0.00909         0.02645            0.02100       0.06526
-           pair-matched               0.10979       0.02257      -0.01046         0.02348            0.01882       0.05849
-24         independent                0.29886       0.03158      -0.00145         0.01619            0.01322       0.03877
-           pair-matched               0.06072       0.03744       0.00442         0.01105            0.01277       0.03744
+12         independent                0.55478       0.04710       0.01497         0.02405            0.02032       0.06314
+           pair-matched               0.08974       0.04226       0.01013         0.02287            0.01904       0.05915
+24         independent                0.30706       0.03076      -0.00136         0.01579            0.01252       0.03670
+           pair-matched               0.05539       0.04056       0.00844         0.01450            0.01193       0.03499
 
 `pre_period_imbalance` is the standardised difference in pre-period
 volume between the arms, measured BEFORE any treatment exists. It is the
@@ -308,8 +308,8 @@ diagnostic to look at before unblinding anything: a large value means
 the arms differed before the treatment did, and no post-hoc adjustment
 fully rescues that.
 
-  12 clusters: imbalance 0.540 -> 0.110, sd across reps 0.02645 -> 0.02348
-  24 clusters: imbalance 0.299 -> 0.061, sd across reps 0.01619 -> 0.01105
+  12 clusters: imbalance 0.555 -> 0.090, sd across reps 0.02405 -> 0.02287
+  24 clusters: imbalance 0.307 -> 0.055, sd across reps 0.01579 -> 0.01450
 
 MINIMUM DETECTABLE EFFECT is the column that answers 'we have 12 geos,
 are we powered?' with a number instead of a shrug. It is the smallest
@@ -317,14 +317,14 @@ effect the design resolves at 80% power, computed against a t reference
 with clusters-2 degrees of freedom -- because using the normal at 10 df
 is how a 12-cluster test gets reported as adequately powered.
 
-  12 clusters, independent   MDE +0.06526 vs true effect +0.03303  -> CANNOT detect
-  12 clusters, pair-matched  MDE +0.05849 vs true effect +0.03303  -> CANNOT detect
-  24 clusters, independent   MDE +0.03877 vs true effect +0.03303  -> CANNOT detect
-  24 clusters, pair-matched  MDE +0.03744 vs true effect +0.03303  -> CANNOT detect
+  12 clusters, independent   MDE +0.06314 vs true effect +0.03213  -> CANNOT detect
+  12 clusters, pair-matched  MDE +0.05915 vs true effect +0.03213  -> CANNOT detect
+  24 clusters, independent   MDE +0.03670 vs true effect +0.03213  -> CANNOT detect
+  24 clusters, pair-matched  MDE +0.03499 vs true effect +0.03213  -> CANNOT detect
 
 Where the MDE exceeds the true effect, the honest report to a PM is that
 this test cannot answer the question at this size and duration -- BEFORE
 running it, not after seeing a null result and calling it evidence of no
 effect. That sentence is the whole reason to compute an MDE.
 
-(1305s)
+(1145s)
