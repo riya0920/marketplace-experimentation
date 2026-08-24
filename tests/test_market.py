@@ -116,13 +116,27 @@ def test_cluster_assignment_is_stable_over_time_and_covers_both_arms():
 # --------------------------------------------------------------------------
 def test_cluster_se_is_larger_than_the_naive_se():
     """The inference error the report sizes. If this ever fails, the geo section
-    is claiming something it cannot show."""
-    mk = M.Marketplace(n_regions=12, couriers=12, seed=21)
-    af = M.assign_cluster(12, seed=21)
-    rec = mk.run(2, af, 0.10)
-    robust = E.cluster_randomised(rec, af.treated_regions)["se"]
-    naive = E.naive_se_for_cluster_design(rec)
-    assert robust > naive * 1.5
+    is claiming something it cannot show.
+
+    ACROSS SEEDS, not one. The previous version asserted `robust > naive * 1.5`
+    on a single seed, and the measured ratio runs 1.04 to 1.80 with a median of
+    1.39 -- so that assertion was roughly a coin flip. It never flickered only
+    because the weather draw was seeded from a salted string hash and silently
+    re-rolled every process; fixing the seed made the coin land tails and
+    exposed the test.
+
+    The property that is actually true: the cluster-robust standard error is
+    ALWAYS larger, and typically about 40% larger."""
+    ratios = []
+    for seed in range(8):
+        mk = M.Marketplace(n_regions=12, couriers=12, seed=seed)
+        af = M.assign_cluster(12, seed=seed)
+        rec = mk.run(2, af, 0.10)
+        robust = E.cluster_randomised(rec, af.treated_regions)["se"]
+        naive = E.naive_se_for_cluster_design(rec)
+        ratios.append(robust / naive)
+    assert min(ratios) > 1.0, ratios
+    assert float(np.median(ratios)) > 1.15, ratios
 
 
 def test_switchback_burn_in_drops_samples():

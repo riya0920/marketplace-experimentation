@@ -4,13 +4,14 @@
 consumes shared supply, naive-A/B bias measured against known truth by market
 tightness, switchback granularity with time-of-day adjustment, cluster-robust geo
 inference, pair matching, **CUPED**, **synthetic control with placebo inference**,
-an **MDE curve**, a **heterogeneous calendar**, and the **decision-tree playbook**
-the spec asked for as a standalone artifact.
+an **MDE curve**, a **heterogeneous calendar**, **couriers that move between
+regions under SE-3's policy**, and the **decision-tree playbook** the spec asked
+for as a standalone artifact.
 
 ```bash
 python run_experiments.py    # ~6min  the original three acts
-python run_complete.py       # ~30s   CUPED, synthetic control, the MDE curve
-python -m pytest tests -q    # 53 tests
+python run_complete.py       # ~12min CUPED, synthetic control, MDE curve, mobility
+python -m pytest tests -q    # 67 tests
 cat out/PLAYBOOK.md          #        the deliverable
 ```
 
@@ -122,6 +123,102 @@ more slowly than 1/√days and every duration here is a **lower bound**. Stating
 direction matters more than correcting it: a planner who knows the estimate is
 optimistic will pad it.
 
+## Couriers that move — the fidelity gap, and the sign I got wrong
+
+This project named the same gap twice: *"couriers still do not reposition in this
+simulator"* and *"regions are independent, so geo spillover cannot be represented
+at all."* A geo design's entire claim is that randomising by region removes
+interference, and a simulator whose couriers cannot move can never show that claim
+failing.
+
+Couriers now move, under **SE-3's repositioning policy imported by file path**
+rather than reimplemented. A rule written *here* to demonstrate spillover would be
+a rule written to demonstrate spillover; SE-3's was built for a different question
+and measured against an oracle placement.
+
+| market | couriers | utilisation | static bias | mobile bias | paired diff | t | crossing |
+|---|---|---|---|---|---|---|---|
+| slack | 14 | 0.258 | −0.0223 | −0.0170 | +0.0053 | 0.78 | 46% |
+| tight | 5 | 0.448 | −0.0478 | −0.0327 | **+0.0151** | **1.53** | 45% |
+
+True lift 0.0800. 40 seeds per row, **paired on seed** — both arms see the same
+weather, the same assignment and the same demand draws, and only the couriers'
+ability to move differs.
+
+**Nearly half the couriers end in a region of the opposite arm, and in the slack
+market the estimate does not care** (t = 0.78). They cross in response to *region
+heterogeneity*, drawn from a seed that has nothing to do with the assignment, so
+the crossing is uncorrelated with the arms and averages out of the contrast.
+
+**Crossing is necessary for interference and it is not sufficient.** A spillover
+audit that measured the crossing rate and stopped would have condemned a design
+that is, here, fine.
+
+### And the sign is the opposite of the one I went looking for
+
+The worry that motivated this section is that mobile couriers leak treatment into
+control and **inflate** the estimate. In the tight market the paired difference is
+**+0.0151** — mobility moves the estimate *up toward the true lift*, from −0.0478
+of bias to −0.0327.
+
+**Mobility does not add spillover here. It partially repairs the interference this
+project already measures.** The static bias is congestion feedback — treatment
+raises demand, demand raises utilisation, utilisation lengthens ETAs and suppresses
+the very conversion being measured — and couriers moving toward busy regions
+relieve exactly that congestion. The mechanism people build geo designs to defend
+against is, in this market, working the other way.
+
+At t = 1.53 on 40 paired seeds that is **a hint, not a finding**, and the report
+says so. A 50-seed run at three days reads +0.0125 at t = 1.98 — same sign, same
+size, still short.
+
+### Why the effect is small, and the limit that puts on all of it
+
+The treatment reaches the repositioning policy through exactly one channel: it
+raises conversion → utilisation → surge → a region's attractiveness. Measured
+inside a run, **treated regions carry surge 1.042 against control's 1.040**, and
+the policy moves nobody below a 1.25 ratio.
+
+Surge activates above 0.55 utilisation; this simulator reaches **0.448**. Pushing
+further does not produce a tighter market so much as a broken one: at 4 couriers
+the mean quoted ETA is **237 minutes**, at 3 it is 303. A four-hour delivery is not
+a tight marketplace, it is a saturated queue.
+
+**So the claim is bounded.** Courier mobility does not create geo spillover bias
+anywhere this simulator can credibly go. The mechanism is not absent — it is
+*unreachable*, because congestion chokes demand before utilisation rises enough for
+supply to chase treatment. *"Mobility does not cause geo bias"* is the quotable
+version and it is missing the only sentence that makes it true.
+
+### Three bugs, all kept
+
+- **A ratio of two small counts moved the fleet.** The first version passed a raw
+  trailing demand estimate to the policy; at 00:30, still warming up, it read
+  `[0.5, 0, 0, 1.1, 0, 1.3]` orders per half-hour. SE-3's policy decides on a
+  **ratio**, and 1.1 against 0.5 clears its 1.25 threshold on a difference of six
+  tenths of an order. Over a day of half-hourly decisions it ratcheted: **87 of 168
+  couriers ended in one region.** Shrinking the estimate toward its pooled mean
+  breaks the ratchet — the most crowded region holds 12% of the fleet with it and
+  38% without. The repair went into the *estimate*, not into SE-3's policy: a ratio
+  is the right shape for the decision, and editing another project's tuned rule to
+  fix this project's input is the wrong place for it.
+- **And the boundary of that fix is now a test too.** Shrinkage does *not*
+  neutralise a single degenerate estimate — that vector shrunk by its own mean
+  still spans a 3.69 ratio and still moves couriers. It defuses the *repetition*.
+  The docstring claimed the stronger thing until a test disagreed.
+- **The weather was seeded with `hash(("weather", days))`.** Python salts string
+  hashing per process, so the comment promising that *"the same seed gives the same
+  weather to every design being compared"* was **true within one run and false
+  across two**: comparisons inside a report were sound, and nobody could reproduce
+  the report. Caught when this sweep printed different t-statistics on a second run
+  with every seed unchanged.
+- **Fixing it exposed a test that had been a coin flip.**
+  `test_cluster_se_is_larger_than_the_naive_se` asserted `robust > naive * 1.5` on
+  a single seed; the measured ratio runs **1.04 to 1.80, median 1.39**. It never
+  flickered only because the weather was silently re-rolling every process. It now
+  asserts across eight seeds what is actually true: the cluster-robust standard
+  error is *always* larger, and typically about 40% larger.
+
 ## The playbook, as an artifact
 
 `out/PLAYBOOK.md` is a standalone decision tree: does the treatment change the
@@ -152,13 +249,17 @@ cannot represent because its regions are independent and a real metro's are not.
 
 - **No sequential testing or always-valid inference.** Everything assumes a fixed
   horizon decided in advance, and peeking invalidates all of it.
-- **Couriers still do not reposition, accept or decline** in *this* simulator —
-  SE-3 models all three, and the two are not joined. That remains the biggest
-  fidelity gap and it matters most for the courier-incentive case.
+- **Couriers reposition; they still do not accept or decline.** SE-3 models the
+  acceptance side and it is not wired in, so a courier here never turns work down
+  — which is the channel a courier-incentive treatment would act on most directly.
+- **The market cannot be made tight enough to test the mechanism that matters.**
+  Congestion chokes demand before utilisation reaches the level where supply
+  chases treatment, so the spillover result above is bounded by the simulator
+  rather than by the finding.
 - **No merchant side**, so it is a two-sided model of a three-sided market. No
   prep times, no merchant capacity.
 - **Single metric.** Conversion only; no basket size, no retention, no
   cannibalisation between regions.
-- **Regions are independent**, so geo spillover cannot be represented at all. In a
-  real metro adjacent regions share couriers, and that is exactly the failure a
-  geo design is supposed to be protected against.
+- **Regions share couriers now, but nothing else.** No demand substitution across
+  a boundary: a customer who gives up in one region does not order from the next
+  one, so the only spillover channel is supply.

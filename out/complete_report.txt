@@ -47,13 +47,13 @@ section'.
 ==============================================================================
 B. CUPED -- THE CHEAPEST VARIANCE REDUCTION THERE IS
 ==============================================================================
-  pre/post correlation across regions : +0.8905
-  variance reduction predicted (rho^2): 0.7931
-  variance reduction realised         : 0.7931
+  pre/post correlation across regions : +0.9421
+  variance reduction predicted (rho^2): 0.8876
+  variance reduction realised         : 0.8876
 
-  effect, unadjusted : +0.02682  (se 0.01808)
-  effect, CUPED      : +0.02455  (se 0.00409)
-  standard error cut by 77.4%
+  effect, unadjusted : +0.03401  (se 0.01593)
+  effect, CUPED      : +0.01600  (se 0.00443)
+  standard error cut by 72.2%
 
   CUPED SUBTRACTS theta * (pre-period metric - its mean) from the
   outcome, with theta chosen to minimise variance. It costs nothing, it
@@ -78,12 +78,12 @@ C. SYNTHETIC CONTROL -- WHEN YOU CANNOT ADD MORE UNITS
 ==============================================================================
   treated region        : 2
   donors in the pool    : 7, with weight > 0.01: 7
-  pre-period fit (RMSE) : 0.04609  (9.0% of the level)
-  post treated          : 0.53625
-  post synthetic        : 0.49834
-  estimated effect      : +0.03792  (true lift 0.0600 on conversion)
+  pre-period fit (RMSE) : 0.04645  (8.8% of the level)
+  post treated          : 0.55789
+  post synthetic        : 0.49514
+  estimated effect      : +0.06274  (true lift 0.0600 on conversion)
 
-  placebo permutation   : p = 0.1667 over 11 usable placebos
+  placebo permutation   : p = 0.0833 over 11 usable placebos
 
   SYNTHETIC CONTROL CHANGES WHAT A UNIT IS rather than adding more of
   them, which is why it is the answer to '12 clusters is underpowered'.
@@ -105,37 +105,37 @@ C. SYNTHETIC CONTROL -- WHEN YOU CANNOT ADD MORE UNITS
   including them is the standard way this test acquires an artificially
   small p-value.
 
-  The pre-period fit is 9.0% of the level, which is tight enough
+  The pre-period fit is 8.8% of the level, which is tight enough
   for the estimate to be worth reading.
 
 ==============================================================================
 D. THE MDE CURVE -- 'HOW LONG DO WE NEED TO RUN THIS'
 ==============================================================================
-Measured standard error at 7 days: 0.01808 unadjusted, 0.00409 with CUPED.
+Measured standard error at 7 days: 0.01593 unadjusted, 0.00443 with CUPED.
 
     days            MDE MDE with CUPED
-       1        0.14864        0.03364
-       2        0.10510        0.02379
-       3        0.08581        0.01942
-       5        0.06647        0.01504
-       7        0.05618        0.01271
-      10        0.04700        0.01064
-      14        0.03972        0.00899
-      21        0.03243        0.00734
-      28        0.02809        0.00636
-      42        0.02293        0.00519
-      56        0.01986        0.00450
+       1        0.13098        0.03645
+       2        0.09262        0.02578
+       3        0.07562        0.02105
+       5        0.05858        0.01630
+       7        0.04951        0.01378
+      10        0.04142        0.01153
+      14        0.03501        0.00974
+      21        0.02858        0.00795
+      28        0.02475        0.00689
+      42        0.02021        0.00562
+      56        0.01750        0.00487
 
   True effect on the conversion rate: 0.03720
-  Days needed, unadjusted : 21
+  Days needed, unadjusted : 14
   Days needed, with CUPED : 1
 
   What each step buys (unadjusted):
-    10 -> 14 days: MDE 0.04700 -> 0.03972  (15.5% better)
-    14 -> 21 days: MDE 0.03972 -> 0.03243  (18.4% better)
-    21 -> 28 days: MDE 0.03243 -> 0.02809  (13.4% better)
-    28 -> 42 days: MDE 0.02809 -> 0.02293  (18.4% better)
-    42 -> 56 days: MDE 0.02293 -> 0.01986  (13.4% better)
+    10 -> 14 days: MDE 0.04142 -> 0.03501  (15.5% better)
+    14 -> 21 days: MDE 0.03501 -> 0.02858  (18.4% better)
+    21 -> 28 days: MDE 0.02858 -> 0.02475  (13.4% better)
+    28 -> 42 days: MDE 0.02475 -> 0.02021  (18.4% better)
+    42 -> 56 days: MDE 0.02021 -> 0.01750  (13.4% better)
 
   THE CURVE FLATTENS, and that is the whole reason to draw it. Standard
   error falls as 1/sqrt(days), so DOUBLING the test improves the MDE by
@@ -169,4 +169,103 @@ the spec asked for and what the previous pass had only as report prose.
   comparisons, heterogeneous effects, and network effects BETWEEN
   regions, which this simulator cannot represent because its regions
   are independent and a real metro's are not.
+
+==============================================================================
+D. COURIERS THAT MOVE -- THE FIDELITY GAP, AND WHAT IT COST
+==============================================================================
+This project named the same gap twice: 'couriers still do not
+reposition in THIS simulator' and 'regions are independent, so geo
+spillover cannot be represented at all'. A geo design's entire claim is
+that randomising by region removes interference, and a simulator whose
+couriers cannot move can never show that claim failing.
+
+Couriers now move, under SE-3's repositioning policy imported by file
+path rather than reimplemented. A rule written HERE to demonstrate
+spillover would be a rule written to demonstrate spillover; SE-3's was
+built for a different question and measured against an oracle placement.
+
+market  couriers  utilisation  static_bias  mobile_bias  paired_diff        se         t  crossing  ct_treated  ct_control
+ slack        14       0.2576      -0.0223      -0.0170       0.0053    0.0067    0.7822    0.4604     13.7291     14.3250
+ tight         5       0.4482      -0.0478      -0.0327       0.0151    0.0099    1.5266    0.4463      5.0476      4.8846
+
+  True lift 0.0800. 40 seeds per row, PAIRED on seed: both arms see the
+  same weather, the same assignment and the same demand draws, and only
+  the couriers' ability to move differs. 2 simulated days each.
+
+NEARLY HALF THE COURIERS END IN A REGION OF THE OPPOSITE ARM (45%).
+
+  In the slack market it changes nothing measurable: +0.0053, t = +0.78.
+  In the tight market it may change something: +0.0151, t = +1.53 --
+  three times the size and still short of conventional significance.
+
+  CROSSING IS NECESSARY FOR INTERFERENCE AND IT IS NOT SUFFICIENT. A
+  spillover audit that measured the crossing rate and stopped would
+  have condemned both designs, and it would have been wrong about the
+  slack one -- where couriers cross constantly and the estimate does not
+  care, because they cross in response to REGION HETEROGENEITY, drawn
+  from a seed with nothing to do with the assignment.
+
+AND THE SIGN IS THE OPPOSITE OF THE ONE I WENT LOOKING FOR.
+
+  The worry that motivated this section is that mobile couriers leak
+  treatment into control and INFLATE the estimate. In the tight market
+  the paired difference is +0.0151 -- mobility moves the estimate UP
+  toward the true lift, from -0.0478 of bias to -0.0327.
+
+  Mobility does not add spillover here. It PARTIALLY REPAIRS the
+  interference this project already measures: the static bias is
+  congestion feedback -- treatment raises demand, demand raises
+  utilisation, utilisation lengthens ETAs and suppresses the very
+  conversion being measured -- and couriers moving toward busy regions
+  relieve exactly that congestion. The mechanism people build geo
+  designs to defend against is, in this market, working the other way.
+
+  t = +1.53 on 40 paired seeds is a HINT, not a finding, and it is
+  reported as one.
+
+WHY THE EFFECT IS SMALL, AND THE LIMIT THAT PUTS ON ALL OF THIS.
+
+  The treatment reaches the repositioning policy through exactly one
+  channel: it raises conversion, which raises utilisation, which raises
+  surge, which raises a region's attractiveness. Measured inside a run,
+  treated regions carry surge 1.042 against control's 1.040 -- and the
+  policy moves nobody below a 1.25 ratio. The signal is orders of
+  magnitude too small to act on.
+
+  Surge activates above 0.55 utilisation and this simulator reaches
+  0.448 in the tight configuration. Pushing further does not produce a
+  tighter market so much as a broken one: at 4 couriers the mean quoted
+  ETA is 237 minutes and at 3 it is 303. A four-hour delivery is not a
+  tight marketplace, it is a saturated queue.
+
+  SO THE CLAIM IS BOUNDED. Courier mobility does not create geo
+  spillover bias anywhere this simulator can credibly go. The mechanism
+  is not absent -- it is unreachable, because congestion chokes demand
+  before utilisation rises enough for supply to chase treatment.
+  'Mobility does not cause geo bias' is the quotable version and it is
+  missing the only sentence that makes it true.
+
+TWO BUGS THIS SECTION PRODUCED, BOTH KEPT:
+
+  1. The first version passed a raw trailing demand estimate to the
+     policy. At 00:30, still warming up, it read
+     [0.5, 0.0, 0.0, 1.1, 0.0, 1.3] orders per half-hour. SE-3's policy
+     decides on a RATIO, and 1.1 against 0.5 clears its 1.25 threshold
+     on a difference of six tenths of an order. Thirty couriers moved on
+     it, and over a day of half-hourly decisions it ratcheted: 87 of 168
+     couriers ended in one region. A runaway, not an equilibrium.
+
+     Shrinking the estimate toward its pooled mean fixes it, because
+     every ratio approaches 1 when the absolute numbers are small. The
+     repair went into the ESTIMATE, not into SE-3's policy: a ratio is
+     the right shape for the decision, and editing another project's
+     tuned rule to fix this project's input is the wrong place for it.
+
+  2. The weather draw was seeded with `hash(("weather", days))`.
+     Python salts string hashing per process, so the comment promising
+     that 'the same seed gives the same weather to every design' was
+     true within one run and false across two. Comparisons inside a
+     report were sound and nobody could reproduce the report. Caught
+     when this sweep printed different t-statistics on a second run
+     with every seed unchanged.
 

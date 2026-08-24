@@ -84,7 +84,8 @@ class Marketplace:
 
     def __init__(self, n_regions=12, couriers=14, arrival_scale=0.40,
                  base_eta=18.0, eta_slope=13.0, beta_eta=0.020,
-                 base_conversion=0.62, service_minutes=34.0, seed=0):
+                 base_conversion=0.62, service_minutes=34.0, seed=0,
+                 weather_seed=20260101):
         self.R = n_regions
         self.couriers = np.full(n_regions, couriers, dtype=float)
         self.arrival_scale = arrival_scale
@@ -94,6 +95,10 @@ class Marketplace:
         self.base_conversion = base_conversion
         self.service_minutes = service_minutes
         self.rng = np.random.default_rng(seed)
+        # deliberately NOT derived from `seed`: every design being compared must
+        # draw the same weather, or a design comparison is partly a comparison
+        # of the weather each design happened to get.
+        self.weather_seed = int(weather_seed)
         # heterogeneous regions: a geo experiment has to survive this
         self.region_mult = 0.65 + 0.7 * np.random.default_rng(seed + 991).random(n_regions)
 
@@ -115,9 +120,17 @@ class Marketplace:
         return np.clip(p, 0.0, 0.999)
 
     # ------------------------------------------------------------------
-    def run(self, days: int, assign_fn, lift: float, warmup_minutes: int = 240):
+    def run(self, days: int, assign_fn, lift: float, warmup_minutes: int = 240,
+            pool=None, reposition_every: int = 30, targeted: bool = False,
+            compliance: float = 0.55, shrink: float = 1.0):
         """Simulate. `assign_fn(minute, region_idx, n_customers, rng) -> bool array`
         decides which of this minute's customers are treated.
+
+        `pool` is an optional `mobility.CourierPool`. With one, idle couriers
+        move between regions every `reposition_every` minutes under SE-3's
+        policy, and per-region capacity stops being constant. That is the
+        difference between a simulator in which a geo design's independence
+        assumption holds by construction and one in which it can be tested.
 
         Returns per-(minute, region) records of exposures, orders, treated
         exposures/orders, utilisation and ETA.
@@ -129,8 +142,23 @@ class Marketplace:
         # same seed gives the same weather to every design being compared --
         # otherwise a design comparison is partly a comparison of the weather it
         # happened to get.
-        wrng = np.random.default_rng(abs(hash(("weather", days))) % (2 ** 31))
+        # NOT hash(): Python salts str/tuple hashing per process, so
+        # `hash(("weather", days))` gave a DIFFERENT weather sequence on every
+        # run of the interpreter. The comment above -- "the same seed gives the
+        # same weather to every design being compared" -- was true within one
+        # process and false across two, which is the worst of both: comparisons
+        # inside a report were sound, and nobody could reproduce the report.
+        # Caught when the same sweep printed different t-statistics on a second
+        # run with every seed unchanged.
+        wrng = np.random.default_rng(self.weather_seed + days)
         day_mult = np.array([day_multiplier(d, wrng) for d in range(days)])
+
+        base_couriers = self.couriers.copy()
+        if pool is not None:
+            self.couriers = np.maximum(pool.counts(), 1.0)
+        # a trailing estimate of arrivals per region, which is what a dispatch
+        # system would actually have -- it cannot see the Poisson rate
+        seen = np.zeros(self.R)
 
         n_rec = T * self.R
         rec = dict(
@@ -157,6 +185,15 @@ class Marketplace:
             lam = (self.arrival_scale * demand_curve(np.array([mod]))[0]
                    * self.region_mult * day_mult[t // MINUTES_PER_DAY])
             arrivals = self.rng.poisson(lam)
+            seen = 0.97 * seen + 0.03 * arrivals
+            if (pool is not None and t % reposition_every == 0
+                    and t >= warmup_minutes):
+                util = np.clip(busy / np.maximum(self.couriers, 1.0), 0, 1)
+                surge = 1.0 + 1.2 * np.clip(util - 0.55, 0, None)
+                self.couriers = np.maximum(
+                    pool.step(busy, seen * reposition_every, surge=surge,
+                              targeted=targeted, compliance=compliance,
+                              shrink=shrink), 1.0)
             cur_eta = self.eta(busy)
 
             for r in range(self.R):
@@ -190,6 +227,10 @@ class Marketplace:
         for key in rec:
             rec[key] = rec[key][:k]
         rec["warmup"] = rec["minute"] < warmup_minutes
+        if pool is not None:
+            rec["final_couriers"] = self.couriers.copy()
+            rec["courier_moves"] = pool.moves
+            self.couriers = base_couriers
         return rec
 
 
