@@ -37,7 +37,7 @@ import os
 import numpy as np
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SE3 = os.path.join(HERE, os.pardir, "se3-dispatch-tracking")
+SE3 = os.path.join(HERE, os.pardir, "delivery-dispatch-tracking")
 
 _CACHE = {}
 
@@ -51,7 +51,7 @@ def se3_control():
         return _CACHE["ctl"]
     path = os.path.join(SE3, "src", "control.py")
     if not os.path.exists(path):
-        raise ImportError("se3-dispatch-tracking/src/control.py not found")
+        raise ImportError("delivery-dispatch-tracking/src/control.py not found")
     spec = importlib.util.spec_from_file_location("se3_control_d3", path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)

@@ -197,9 +197,11 @@ order of preference are:
     fixed horizon decided in advance, and peeking invalidates all of it.
   * Multiple comparisons across metrics.
   * Heterogeneous treatment effects -- every design here estimates one average.
-  * Network effects between REGIONS. This simulator's regions are independent,
-    so geo spillover cannot be represented, and in a real metro adjacent regions
-    share couriers.
+  * Cross-region demand spillover. Couriers now move between regions under
+    SE-3's repositioning policy (see the mobility experiment), so regions are no
+    longer fully independent -- but that repairs the congestion-feedback
+    interference this project already measures rather than modelling true demand
+    spillover between regions, which the simulator still does not represent.
 """
 
 

@@ -37,12 +37,12 @@ which is precisely the artifact flagged in the comparison section."*
 
 | | value |
 |---|---|
-| pre/post correlation across regions | **+0.8905** |
-| variance reduction predicted (ρ²) | 0.7931 |
-| variance reduction **realised** | **0.7931** |
-| effect, unadjusted | +0.02682 (se **0.01808**) |
-| effect, CUPED | +0.02455 (se **0.00409**) |
-| **standard error cut by** | **77.4%** |
+| pre/post correlation across regions | **+0.9421** |
+| variance reduction predicted (ρ²) | 0.8876 |
+| variance reduction **realised** | **0.8876** |
+| effect, unadjusted | +0.03401 (se **0.01593**) |
+| effect, CUPED | +0.01600 (se **0.00443**) |
+| **standard error cut by** | **72.2%** |
 
 CUPED subtracts `θ · (pre-period metric − its mean)` from the outcome, with θ
 chosen to minimise variance. It costs nothing, it cannot bias the estimate
