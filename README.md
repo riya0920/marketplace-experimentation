@@ -1,4 +1,4 @@
-# DATA-3 — Marketplace Experimentation
+# DATA-3: Marketplace Experimentation
 
 **Complete against the spec.** An agent-based marketplace where a treatment
 consumes shared supply, naive-A/B bias measured against known truth by market
@@ -21,19 +21,19 @@ The previous README flagged this as the artifact that made its own
 switchback-variance ranking suspect: *"no day-of-week, no weather, no trend,
 which is precisely the artifact flagged in the comparison section."*
 
-- **Day of week** runs 0.86 (Tuesday) to 1.42 (Saturday) — a **65% swing**, larger
+- **Day of week** runs 0.86 (Tuesday) to 1.42 (Saturday), a **65% swing**, larger
   than any treatment effect anyone would test. A five-day test that ran
   Tuesday-to-Thursday and one that caught a weekend are not the same test.
 - **Weather** is a per-**day** shock shared across every region, which is what
   makes it a confound rather than noise: a rainy Tuesday raises demand everywhere
   at once, so it cannot be averaged away across regions the way region-specific
   noise can. It is drawn from one seed so every design being compared gets the
-  *same* weather — otherwise a design comparison is partly a comparison of the
+  *same* weather; otherwise a design comparison is partly a comparison of the
   weather it drew.
 - **Trend** is 0.4%/day. With an assignment unbalanced across days, a trend is
   attributed to the treatment, and no amount of within-day randomisation fixes it.
 
-## CUPED — the cheapest variance reduction there is
+## CUPED: the cheapest variance reduction there is
 
 | | value |
 |---|---|
@@ -47,7 +47,7 @@ which is precisely the artifact flagged in the comparison section."*
 CUPED subtracts `θ · (pre-period metric − its mean)` from the outcome, with θ
 chosen to minimise variance. It costs nothing, it cannot bias the estimate
 provided the covariate is pre-treatment, and **the variance reduction is exactly
-ρ²** — so its value is knowable in advance from a correlation you already have.
+ρ²**; so its value is knowable in advance from a correlation you already have.
 That is why it belongs before any conversation about running longer.
 
 **The one correctness condition is not checkable from the numbers.** A
@@ -60,9 +60,9 @@ doing: if they diverge, the covariate is not behaving the way the theory assumed
 
 > θ is a **regression coefficient**, not a correlation. Using the correlation
 > under-adjusts whenever the two have different scales, and the slip is invisible
-> at unit scale — a test pins it.
+> at unit scale; a test pins it.
 
-## Synthetic control — when you cannot add more units
+## Synthetic control: when you cannot add more units
 
 ```
 treated region        : 2
@@ -77,7 +77,7 @@ control units** that tracks the treated unit's pre-period. It changes what a uni
 *is* rather than adding more of them, which is why it is the answer to "12
 clusters is underpowered".
 
-- **The weights are constrained to a simplex** — non-negative, summing to one —
+- **The weights are constrained to a simplex**, non-negative, summing to one,
   and that is not decoration. Unconstrained least squares hands a donor a weight
   of −3, which *extrapolates*; the credibility of the method rests entirely on the
   counterfactual being a weighted average of things that actually happened.
@@ -89,10 +89,10 @@ clusters is underpowered".
   the standard way this test acquires an artificially small p-value.
 - **The pre-period fit is reported next to every estimate**, because it decides
   whether the estimate means anything. A synthetic control with a bad pre-fit has
-  not produced a weak result — it has failed to build a counterfactual. A test
+  not produced a weak result; it has failed to build a counterfactual. A test
   plants a treated unit outside the donor hull and asserts the RMSE catches it.
 
-## The MDE curve — "how long do we need to run this"
+## The MDE curve: "how long do we need to run this"
 
 | days | MDE | MDE with CUPED |
 |---|---|---|
@@ -109,7 +109,7 @@ True effect on the conversion rate: **0.03720**.
 there is buys three weeks of calendar.
 
 **The curve flattens, and that is the whole reason to draw it.** Standard error
-falls as 1/√days, so *doubling* the test improves the MDE by only 30% — every step
+falls as 1/√days, so *doubling* the test improves the MDE by only 30%; every step
 in the table buys 13–18%. Past some point another week buys almost nothing, and
 that point is where "run it longer" stops being an option: the honest answer
 becomes change the design, change the metric, or do not run it.
@@ -118,12 +118,12 @@ A single MDE answers "can we detect X in five days", which is a yes/no about a
 decision nobody made. The curve answers the question that was asked.
 
 **The scaling assumes independent days and is therefore optimistic.** Demand is
-autocorrelated — a rainy week is a rainy week — so the true standard error falls
+autocorrelated, a rainy week is a rainy week, so the true standard error falls
 more slowly than 1/√days and every duration here is a **lower bound**. Stating the
 direction matters more than correcting it: a planner who knows the estimate is
 optimistic will pad it.
 
-## Couriers that move — the fidelity gap, and the sign I got wrong
+## Couriers that move: the fidelity gap, and the sign I got wrong
 
 This project named the same gap twice: *"couriers still do not reposition in this
 simulator"* and *"regions are independent, so geo spillover cannot be represented
@@ -141,7 +141,7 @@ and measured against an oracle placement.
 | slack | 14 | 0.258 | −0.0223 | −0.0170 | +0.0053 | 0.78 | 46% |
 | tight | 5 | 0.448 | −0.0478 | −0.0327 | **+0.0151** | **1.53** | 45% |
 
-True lift 0.0800. 40 seeds per row, **paired on seed** — both arms see the same
+True lift 0.0800. 40 seeds per row, **paired on seed**: both arms see the same
 weather, the same assignment and the same demand draws, and only the couriers'
 ability to move differs.
 
@@ -158,18 +158,18 @@ that is, here, fine.
 
 The worry that motivated this section is that mobile couriers leak treatment into
 control and **inflate** the estimate. In the tight market the paired difference is
-**+0.0151** — mobility moves the estimate *up toward the true lift*, from −0.0478
+**+0.0151**: mobility moves the estimate *up toward the true lift*, from −0.0478
 of bias to −0.0327.
 
 **Mobility does not add spillover here. It partially repairs the interference this
-project already measures.** The static bias is congestion feedback — treatment
+project already measures.** The static bias is congestion feedback: treatment
 raises demand, demand raises utilisation, utilisation lengthens ETAs and suppresses
-the very conversion being measured — and couriers moving toward busy regions
+the very conversion being measured, and couriers moving toward busy regions
 relieve exactly that congestion. The mechanism people build geo designs to defend
 against is, in this market, working the other way.
 
 At t = 1.53 on 40 paired seeds that is **a hint, not a finding**, and the report
-says so. A 50-seed run at three days reads +0.0125 at t = 1.98 — same sign, same
+says so. A 50-seed run at three days reads +0.0125 at t = 1.98, same sign, same
 size, still short.
 
 ### Why the effect is small, and the limit that puts on all of it
@@ -185,7 +185,7 @@ the mean quoted ETA is **237 minutes**, at 3 it is 303. A four-hour delivery is 
 a tight marketplace, it is a saturated queue.
 
 **So the claim is bounded.** Courier mobility does not create geo spillover bias
-anywhere this simulator can credibly go. The mechanism is not absent — it is
+anywhere this simulator can credibly go. The mechanism is not absent; it is
 *unreachable*, because congestion chokes demand before utilisation rises enough for
 supply to chase treatment. *"Mobility does not cause geo bias"* is the quotable
 version and it is missing the only sentence that makes it true.
@@ -198,12 +198,12 @@ version and it is missing the only sentence that makes it true.
   **ratio**, and 1.1 against 0.5 clears its 1.25 threshold on a difference of six
   tenths of an order. Over a day of half-hourly decisions it ratcheted: **87 of 168
   couriers ended in one region.** Shrinking the estimate toward its pooled mean
-  breaks the ratchet — the most crowded region holds 12% of the fleet with it and
+  breaks the ratchet: the most crowded region holds 12% of the fleet with it and
   38% without. The repair went into the *estimate*, not into SE-3's policy: a ratio
   is the right shape for the decision, and editing another project's tuned rule to
   fix this project's input is the wrong place for it.
 - **And the boundary of that fix is now a test too.** Shrinkage does *not*
-  neutralise a single degenerate estimate — that vector shrunk by its own mean
+  neutralise a single degenerate estimate: that vector shrunk by its own mean
   still spans a 3.69 ratio and still moves couriers. It defuses the *repetition*.
   The docstring claimed the stronger thing until a test disagreed.
 - **The weather was seeded with `hash(("weather", days))`.** Python salts string
@@ -228,7 +228,7 @@ named so the number can be checked. That is the difference between a playbook an
 a blog post: a reader can disagree with a branch by disputing a specific number
 rather than a preference.
 
-It also states what it does not cover — sequential testing, multiple comparisons,
+It also states what it does not cover: sequential testing, multiple comparisons,
 heterogeneous effects, and network effects *between* regions, which this simulator
 cannot represent because its regions are independent and a real metro's are not.
 
@@ -236,7 +236,7 @@ cannot represent because its regions are independent and a real metro's are not.
 
 - **The analysis reconstructed the assignment by re-seeding a generator** instead
   of reading it off the assignment object. The two draws did not match, so the
-  "treated" group in the analysis was not the group the simulator treated — and
+  "treated" group in the analysis was not the group the simulator treated, and
   the estimated effect came out **negative** against a positive planted lift. An
   assignment that has to be guessed by the analysis is one that will eventually be
   guessed wrong.
@@ -250,8 +250,8 @@ cannot represent because its regions are independent and a real metro's are not.
 - **No sequential testing or always-valid inference.** Everything assumes a fixed
   horizon decided in advance, and peeking invalidates all of it.
 - **Couriers reposition; they still do not accept or decline.** SE-3 models the
-  acceptance side and it is not wired in, so a courier here never turns work down
-  — which is the channel a courier-incentive treatment would act on most directly.
+  acceptance side and it is not wired in, so a courier here never turns work down,
+  which is the channel a courier-incentive treatment would act on most directly.
 - **The market cannot be made tight enough to test the mechanism that matters.**
   Congestion chokes demand before utilisation reaches the level where supply
   chases treatment, so the spillover result above is bounded by the simulator
